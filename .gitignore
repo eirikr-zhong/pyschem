@@ -1,0 +1,28 @@
+# Python cache/artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Test / coverage artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Lint/type-check caches
+.mypy_cache/
+.ruff_cache/
+
+# OS/editor
+.DS_Store
+
+# Build artifacts
+*.egg-info/
+dist/
+build/
+
+# Generated outputs
+out/*.png
+out/*.jpg
+out/*.jpeg
+out/*.dot

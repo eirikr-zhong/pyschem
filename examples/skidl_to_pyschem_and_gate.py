@@ -1,7 +1,9 @@
+import os
 from pyschem import Schematic, Part, NetLabel, connect, configure_default_symbols
 
 # Configure global symbols singleton once (hidden lookup behavior)
-configure_default_symbols(symbol_paths=["/Users/dev/Documents/kicad-symbols/Transistor_BJT.kicad_sym"])
+_SYM_DIR = os.path.join(os.path.dirname(__file__), "kicad-symbols")
+configure_default_symbols(symbol_paths=[os.path.join(_SYM_DIR, "Transistor_BJT.kicad_sym")])
 
 sch = Schematic("transistor_and_gate")
 
@@ -47,6 +49,6 @@ connect(nl_vcc2.label_pin, q2.pin("E"))
 connect(nl_gnd1.label_pin, r3.pin(2))
 connect(nl_gnd2.label_pin, r5.pin(2))
 
-out_path = "/Users/dev/Documents/PySchem/out/transistor_and_gate.dot"
+out_path = os.path.join(os.path.dirname(__file__), "..", "out", "transistor_and_gate.dot")
 sch.export_dot(out_path)
 print(out_path)
