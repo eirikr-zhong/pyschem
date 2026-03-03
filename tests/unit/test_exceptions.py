@@ -12,7 +12,6 @@ ERR-05  test_exception_context_fields
 import pytest
 
 from lib.errors import (
-    FootprintNotFoundError,
     LayoutConstraintError,
     PinNotFoundError,
     PySchemException,
@@ -22,12 +21,11 @@ from lib.errors import (
     SymbolNotFoundError,
 )
 
-# All concrete subclasses (7 total, excluding the base)
+# All concrete subclasses (6 total, excluding the base)
 ALL_SUBCLASSES = [
     StyleValidationError,
     PinNotFoundError,
     SymbolNotFoundError,
-    FootprintNotFoundError,
     LayoutConstraintError,
     RenderLayoutError,
     RenderPathError,
@@ -48,7 +46,7 @@ def test_base_exception_instantiable():
 
 
 # ---------------------------------------------------------------------------
-# ERR-02  All 7 subclasses inherit from PySchemException
+# ERR-02  All subclasses inherit from PySchemException
 # ---------------------------------------------------------------------------
 
 @pytest.mark.unit
@@ -89,7 +87,6 @@ class TestMessageConvention:
         (StyleValidationError,    "rotation must be one of [0, 90, 180, 270], got 45"),
         (PinNotFoundError,        "pin '3' not found on part R1"),
         (SymbolNotFoundError,     "symbol 'Device:Foo' not found in library"),
-        (FootprintNotFoundError,  "footprint 'Resistor_SMD:R_0805' not found"),
         (LayoutConstraintError,   "locked parts P1 and P2 overlap at (10.0, 10.0)"),
         (RenderLayoutError,       "render failed: no coordinates for part R1"),
         (RenderPathError,         "cannot write to path '/read-only/out.dot'"),

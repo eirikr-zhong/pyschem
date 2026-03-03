@@ -5,7 +5,6 @@ A library for creating, manipulating, and rendering schematics.
 
 from lib._version import __version__
 from lib.symbols import (
-    FootprintData,
     PinDefinition,
     SymbolData,
     SymbolPrimitive,
@@ -35,7 +34,6 @@ from lib.core import (
 )
 from lib.errors import (
     ERCError,
-    FootprintNotFoundError,
     LayoutConstraintError,
     PinNotFoundError,
     PySchemException,
@@ -74,7 +72,6 @@ __all__ = [
     "StyleValidationError",
     "PinNotFoundError",
     "SymbolNotFoundError",
-    "FootprintNotFoundError",
     "LayoutConstraintError",
     "RenderLayoutError",
     "RenderPathError",
@@ -83,7 +80,6 @@ __all__ = [
     "Symbols",
     "SymbolData",
     "SymbolPrimitive",
-    "FootprintData",
     "PinDefinition",
     "configure_default_symbols",
     "get_default_symbols",

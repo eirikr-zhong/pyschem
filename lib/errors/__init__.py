@@ -2,7 +2,6 @@
 
 from lib.errors.exceptions import (
     ERCError,
-    FootprintNotFoundError,
     LayoutConstraintError,
     PinNotFoundError,
     PySchemException,
@@ -17,7 +16,6 @@ __all__ = [
     "StyleValidationError",
     "PinNotFoundError",
     "SymbolNotFoundError",
-    "FootprintNotFoundError",
     "LayoutConstraintError",
     "RenderLayoutError",
     "RenderPathError",

@@ -18,10 +18,6 @@ class SymbolNotFoundError(PySchemException):
     pass
 
 
-class FootprintNotFoundError(PySchemException):
-    pass
-
-
 class LayoutConstraintError(PySchemException):
     pass
 

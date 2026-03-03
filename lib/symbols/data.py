@@ -1,4 +1,4 @@
-"""Symbol and footprint data structures."""
+"""Symbol data structures."""
 
 from dataclasses import dataclass, field
 from typing import Optional
@@ -62,7 +62,7 @@ class SymbolData:
         lib: Library identifier (e.g., "Device")
         pins: List of pin definitions
         primitives: List of KiCad-like graphical primitives
-        properties: Dict of symbol properties (Description, Datasheet, Footprint, etc.)
+        properties: Dict of parsed symbol properties (Description, Datasheet, etc.)
         bounding_box: Optional (min_x, min_y, max_x, max_y)
     """
 
@@ -71,21 +71,4 @@ class SymbolData:
     pins: list[PinDefinition] = field(default_factory=list)
     primitives: list[SymbolPrimitive] = field(default_factory=list)
     properties: dict[str, str] = field(default_factory=dict)
-    bounding_box: Optional[tuple[float, float, float, float]] = None
-
-
-@dataclass
-class FootprintData:
-    """Represents parsed footprint data from KiCad .pretty directory.
-
-    Attributes:
-        name: Footprint name (e.g., "R_0805", "SOIC-8")
-        library: Footprint library name (e.g., "Resistor_SMD")
-        pads: Number of pads
-        bounding_box: Optional (min_x, min_y, max_x, max_y)
-    """
-
-    name: str
-    library: str
-    pads: int = 0
     bounding_box: Optional[tuple[float, float, float, float]] = None

@@ -107,7 +107,7 @@ class Part:
         lib_id: Symbol library identifier (e.g., "Device:R")
         ref: Reference designator (e.g., "R1"). If None, auto-generated.
         value: Component value (e.g., "10k")
-        footprint: Footprint identifier (e.g., "Resistor_SMD:R_0805")
+        footprint: Optional PCB metadata string (not used by rendering)
     """
 
     lib_id: str

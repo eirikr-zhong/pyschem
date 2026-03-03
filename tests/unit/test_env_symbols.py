@@ -1,4 +1,4 @@
-"""Unit tests for environment-variable-based symbol/footprint path discovery.
+"""Unit tests for environment-variable-based symbol path discovery.
 
 Test IDs
 --------
@@ -51,7 +51,7 @@ def reset_singleton():
     """Reset the global singleton and env vars before/after every test."""
     original = _sym_mod._DEFAULT_SYMBOLS
     _sym_mod._DEFAULT_SYMBOLS = None
-    env_backup = {k: os.environ.pop(k, None) for k in ("KICAD_SYMBOL_DIR", "KICAD_FOOTPRINT_DIR")}
+    env_backup = {k: os.environ.pop(k, None) for k in ("KICAD_SYMBOL_DIR",)}
     yield
     _sym_mod._DEFAULT_SYMBOLS = original
     for k, v in env_backup.items():
@@ -158,7 +158,7 @@ def test_singleton_has_priority_over_env_var(sym_dir, second_sym_dir):
 
 def test_missing_env_vars_return_none():
     """get_default_symbols() returns None when no singleton and no env vars."""
-    # Both env vars are absent (reset_singleton fixture cleared them)
+    # Symbol env var is absent (reset_singleton fixture cleared it)
     result = get_default_symbols()
     assert result is None
 
