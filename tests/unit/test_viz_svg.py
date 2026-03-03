@@ -1,0 +1,217 @@
+"""Unit tests for SVG visualization of Q_PNP_CBE.
+
+Test IDs
+--------
+SVG-GEN-01  export_svg() creates the file
+SVG-GEN-02  render(fmt='svg') creates the file
+SVG-GEN-03  get_svg_string() returns non-empty string
+SVG-GEN-04  SVG string contains valid XML header
+
+SVG-BODY-01  SVG contains Q_PNP_CBE body elements (circle)
+SVG-BODY-02  SVG contains ref label text (Q1)
+SVG-BODY-03  SVG contains pin name 'B'
+SVG-BODY-04  SVG contains pin name 'C'
+SVG-BODY-05  SVG contains pin name 'E'
+
+SVG-NET-01   SVG contains net label text when pin connected to named net
+SVG-NET-02   Multiple net labels rendered (BASE, VCC, GND all present)
+SVG-NET-03   Anonymous-net pins produce NO net-label text in PNP symbol
+
+SVG-DOT-REG  DOT export still works after SVG code added (regression guard)
+"""
+
+from __future__ import annotations
+
+import pytest
+
+from lib.core.connect import connect
+from lib.core.part import NetLabel, Part
+from lib.core.schematic import Schematic
+from lib.symbols.data import SymbolData, PinDefinition
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _pnp_symbol_data() -> SymbolData:
+    return SymbolData(
+        name="Q_PNP_CBE",
+        lib="Device",
+        pins=[
+            PinDefinition(number="1", name="C", type="passive", x=0, y=0),
+            PinDefinition(number="2", name="B", type="input",   x=0, y=0),
+            PinDefinition(number="3", name="E", type="passive", x=0, y=0),
+        ],
+    )
+
+
+def _make_pnp_sch(net_b: str = "BASE", net_c: str = "VCC", net_e: str = "GND") -> Schematic:
+    sch = Schematic("Q_PNP_CBE_demo")
+    q1 = Part("Device:Q_PNP_CBE", ref="Q1")
+    q1.attach_symbol(_pnp_symbol_data())
+    sch.add_part(q1)
+
+    b = NetLabel(net_b)
+    c = NetLabel(net_c)
+    e = NetLabel(net_e)
+    for nl in [b, c, e]:
+        sch.add_part(nl)
+
+    connect(q1.pin("B"), b.label_pin)
+    connect(q1.pin("C"), c.label_pin)
+    connect(q1.pin("E"), e.label_pin)
+
+    return sch
+
+
+# ===========================================================================
+# SVG-GEN — File generation
+# ===========================================================================
+
+class TestSvgGeneration:
+    """SVG-GEN: basic file/string generation."""
+
+    def test_export_svg_creates_file(self, tmp_path):
+        """SVG-GEN-01: export_svg() writes a file."""
+        sch = _make_pnp_sch()
+        out = tmp_path / "q1.svg"
+        sch.export_svg(str(out))
+        assert out.exists(), "SVG file was not created"
+        assert out.stat().st_size > 0
+
+    def test_render_svg_creates_file(self, tmp_path):
+        """SVG-GEN-02: render(fmt='svg') writes a file."""
+        sch = _make_pnp_sch()
+        out = tmp_path / "q1_render.svg"
+        sch.render(str(out), fmt="svg")
+        assert out.exists(), "SVG file from render() was not created"
+
+    def test_get_svg_string_nonempty(self):
+        """SVG-GEN-03: get_svg_string() returns non-empty string."""
+        sch = _make_pnp_sch()
+        svg = sch.get_svg_string()
+        assert isinstance(svg, str)
+        assert len(svg) > 50
+
+    def test_svg_has_xml_header(self):
+        """SVG-GEN-04: SVG string starts with XML declaration."""
+        sch = _make_pnp_sch()
+        svg = sch.get_svg_string()
+        assert '<?xml' in svg
+        assert '<svg' in svg
+
+
+# ===========================================================================
+# SVG-BODY — Component body elements
+# ===========================================================================
+
+class TestSvgBody:
+    """SVG-BODY: schematic symbol graphical elements."""
+
+    def test_body_has_circle(self):
+        """SVG-BODY-01: PNP body rendered as <circle>."""
+        sch = _make_pnp_sch()
+        svg = sch.get_svg_string()
+        assert "<circle" in svg
+
+    def test_ref_label_present(self):
+        """SVG-BODY-02: part ref 'Q1' appears in SVG text."""
+        sch = _make_pnp_sch()
+        svg = sch.get_svg_string()
+        assert "Q1" in svg
+
+    def test_pin_name_b_present(self):
+        """SVG-BODY-03: pin name 'B' appears in SVG."""
+        sch = _make_pnp_sch()
+        svg = sch.get_svg_string()
+        assert ">B<" in svg
+
+    def test_pin_name_c_present(self):
+        """SVG-BODY-04: pin name 'C' appears in SVG."""
+        sch = _make_pnp_sch()
+        svg = sch.get_svg_string()
+        assert ">C<" in svg
+
+    def test_pin_name_e_present(self):
+        """SVG-BODY-05: pin name 'E' appears in SVG."""
+        sch = _make_pnp_sch()
+        svg = sch.get_svg_string()
+        assert ">E<" in svg
+
+
+# ===========================================================================
+# SVG-NET — Net labels
+# ===========================================================================
+
+class TestSvgNetLabels:
+    """SVG-NET: net label rendering."""
+
+    def test_single_net_label_present(self):
+        """SVG-NET-01: net label text appears when pin connected to named net."""
+        sch = Schematic("pn_test")
+        q1 = Part("Device:Q_PNP_CBE", ref="Q1")
+        q1.attach_symbol(_pnp_symbol_data())
+        sch.add_part(q1)
+        base = NetLabel("BASE")
+        sch.add_part(base)
+        connect(q1.pin("B"), base.label_pin)
+
+        svg = sch.get_svg_string()
+        assert "BASE" in svg
+
+    def test_all_three_net_labels_present(self):
+        """SVG-NET-02: all three net labels (BASE, VCC, GND) appear in SVG."""
+        sch = _make_pnp_sch()
+        svg = sch.get_svg_string()
+        assert "BASE" in svg
+        assert "VCC" in svg
+        assert "GND" in svg
+
+    def test_no_net_label_for_unconnected_pin(self):
+        """SVG-NET-03: unconnected PNP pin produces no net label text for it."""
+        sch = Schematic("bare_pnp")
+        q1 = Part("Device:Q_PNP_CBE", ref="Q1")
+        q1.attach_symbol(_pnp_symbol_data())
+        sch.add_part(q1)
+        # Connect only B; leave C and E unconnected
+        base = NetLabel("BASE")
+        sch.add_part(base)
+        connect(q1.pin("B"), base.label_pin)
+
+        svg = sch.get_svg_string()
+        # VCC and GND should not appear — they were not connected
+        assert "VCC" not in svg
+        assert "GND" not in svg
+        # BASE should appear
+        assert "BASE" in svg
+
+
+# ===========================================================================
+# SVG-DOT-REG — Regression guard: DOT still works
+# ===========================================================================
+
+class TestDotRegression:
+    """SVG-DOT-REG: ensure DOT export still functions after SVG additions."""
+
+    def test_dot_export_still_works(self, tmp_path):
+        """SVG-DOT-REG-01: export_dot() produces valid DOT after SVG code added."""
+        sch = _make_pnp_sch()
+        out = tmp_path / "q1.dot"
+        sch.export_dot(str(out))
+        assert out.exists()
+        dot = out.read_text()
+        assert 'graph "Q_PNP_CBE_demo"' in dot
+
+    def test_get_dot_string_unaffected(self):
+        """SVG-DOT-REG-02: get_dot_string() still returns DOT syntax."""
+        sch = _make_pnp_sch()
+        dot = sch.get_dot_string()
+        assert dot.startswith('graph')
+        assert "Q1" in dot
+
+    def test_render_unsupported_fmt_raises(self):
+        """SVG-DOT-REG-03: render() with unknown format raises NotImplementedError."""
+        sch = Schematic("x")
+        with pytest.raises(NotImplementedError):
+            sch.render("/tmp/dummy.xyz", fmt="xyz")

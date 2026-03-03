@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1021.8" height="457.0" viewBox="-60.0 -27.0 1021.8 457.0">
+  <rect width="100%" height="100%" fill="#ffffff"/>
+  <text x="842.0" y="20" font-size="14.0" font-family="monospace" fill="black" text-anchor="middle" dominant-baseline="middle">transistor_and_gate</text>
+  <g transform="rotate(-90,235.000,190.000)">
+  <circle cx="235.0" cy="190.0" r="18.0" stroke="#333" stroke-width="1.8" fill="none"/>
+  <line x1="205.0" y1="190.0" x2="217.0" y2="190.0" stroke="#333" stroke-width="1.8"/>
+  <line x1="228.7" y1="178.3" x2="228.7" y2="201.7" stroke="#333" stroke-width="2.7"/>
+  <line x1="228.7" y1="181.0" x2="235.0" y2="172.0" stroke="#333" stroke-width="1.8"/>
+  <line x1="235.0" y1="172.0" x2="235.0" y2="152.0" stroke="#333" stroke-width="1.8"/>
+  <line x1="228.7" y1="199.0" x2="235.0" y2="208.0" stroke="#333" stroke-width="1.8"/>
+  <line x1="235.0" y1="208.0" x2="235.0" y2="228.0" stroke="#333" stroke-width="1.8"/>
+  <polygon points="228.7,199.0 234.35270025158138,202.36704319333325 229.92884788077856,205.46373985289523" stroke="#333" stroke-width="0.5" fill="black"/>
+  <text x="243.0" y="152.0" font-size="10.0" font-family="monospace" fill="#333" text-anchor="start" dominant-baseline="middle">C</text>
+  <text x="197.0" y="190.0" font-size="10.0" font-family="monospace" fill="#333" text-anchor="end" dominant-baseline="middle">B</text>
+  <text x="243.0" y="228.0" font-size="10.0" font-family="monospace" fill="#333" text-anchor="start" dominant-baseline="middle">E</text>
+  <text x="257.0" y="182.0" font-size="14.0" font-family="monospace" fill="black" text-anchor="start" dominant-baseline="middle">Q1</text>
+  </g>
+  <circle cx="505.0" cy="190.0" r="18.0" stroke="#333" stroke-width="1.8" fill="none"/>
+  <line x1="475.0" y1="190.0" x2="487.0" y2="190.0" stroke="#333" stroke-width="1.8"/>
+  <line x1="498.7" y1="178.3" x2="498.7" y2="201.7" stroke="#333" stroke-width="2.7"/>
+  <line x1="498.7" y1="181.0" x2="505.0" y2="172.0" stroke="#333" stroke-width="1.8"/>
+  <line x1="505.0" y1="172.0" x2="505.0" y2="152.0" stroke="#333" stroke-width="1.8"/>
+  <line x1="498.7" y1="199.0" x2="505.0" y2="208.0" stroke="#333" stroke-width="1.8"/>
+  <line x1="505.0" y1="208.0" x2="505.0" y2="228.0" stroke="#333" stroke-width="1.8"/>
+  <polygon points="498.7,199.0 504.3527002515814,202.36704319333325 499.92884788077856,205.46373985289523" stroke="#333" stroke-width="0.5" fill="black"/>
+  <text x="513.0" y="152.0" font-size="10.0" font-family="monospace" fill="#333" text-anchor="start" dominant-baseline="middle">C</text>
+  <text x="467.0" y="190.0" font-size="10.0" font-family="monospace" fill="#333" text-anchor="end" dominant-baseline="middle">B</text>
+  <text x="513.0" y="228.0" font-size="10.0" font-family="monospace" fill="#333" text-anchor="start" dominant-baseline="middle">E</text>
+  <text x="527.0" y="182.0" font-size="14.0" font-family="monospace" fill="black" text-anchor="start" dominant-baseline="middle">Q2</text>
+  <polyline points="60.0,95.0 140.0,95.0 140.0,135.0 60.0,135.0 60.0,95.0" stroke="#333" stroke-width="1.8" fill="none"/>
+  <text x="100.0" y="108.0" font-size="14.0" font-family="monospace" fill="black" text-anchor="middle" dominant-baseline="middle">R1</text>
+  <text x="100.0" y="123.0" font-size="11.0" font-family="monospace" fill="#555" text-anchor="middle" dominant-baseline="middle">10K</text>
+  <line x1="60.0" y1="115.0" x2="40.0" y2="115.0" stroke="#555" stroke-width="1.5"/>
+  <text x="36.0" y="115.0" font-size="10.0" font-family="monospace" fill="#333" text-anchor="end" dominant-baseline="middle">1</text>
+  <line x1="140.0" y1="115.0" x2="160.0" y2="115.0" stroke="#555" stroke-width="1.5"/>
+  <text x="164.0" y="115.0" font-size="10.0" font-family="monospace" fill="#333" text-anchor="start" dominant-baseline="middle">2</text>
+  <polyline points="60.0,245.0 140.0,245.0 140.0,285.0 60.0,285.0 60.0,245.0" stroke="#333" stroke-width="1.8" fill="none"/>
+  <text x="100.0" y="258.0" font-size="14.0" font-family="monospace" fill="black" text-anchor="middle" dominant-baseline="middle">R2</text>
+  <text x="100.0" y="273.0" font-size="11.0" font-family="monospace" fill="#555" text-anchor="middle" dominant-baseline="middle">10K</text>
+  <polyline points="360.0,170.0 440.0,170.0 440.0,210.0 360.0,210.0 360.0,170.0" stroke="#333" stroke-width="1.8" fill="none"/>
+  <text x="400.0" y="183.0" font-size="14.0" font-family="monospace" fill="black" text-anchor="middle" dominant-baseline="middle">R3</text>
+  <text x="400.0" y="198.0" font-size="11.0" font-family="monospace" fill="#555" text-anchor="middle" dominant-baseline="middle">10K</text>
+  <polyline points="195.0,350.0 275.0,350.0 275.0,390.0 195.0,390.0 195.0,350.0" stroke="#333" stroke-width="1.8" fill="none"/>
+  <text x="235.0" y="363.0" font-size="14.0" font-family="monospace" fill="black" text-anchor="middle" dominant-baseline="middle">R4</text>
+  <text x="235.0" y="378.0" font-size="11.0" font-family="monospace" fill="#555" text-anchor="middle" dominant-baseline="middle">10K</text>
+  <polyline points="465.0,350.0 545.0,350.0 545.0,390.0 465.0,390.0 465.0,350.0" stroke="#333" stroke-width="1.8" fill="none"/>
+  <text x="505.0" y="363.0" font-size="14.0" font-family="monospace" fill="black" text-anchor="middle" dominant-baseline="middle">R5</text>
+  <text x="505.0" y="378.0" font-size="11.0" font-family="monospace" fill="#555" text-anchor="middle" dominant-baseline="middle">10K</text>
+  <rect x="260.2" y="172.0" width="25.6" height="16.0" fill="white" opacity="0.85"/>
+  <text x="273.0" y="180.0" font-size="12.0" font-family="monospace" fill="#1565c0" text-anchor="middle" dominant-baseline="middle">VCC</text>
+  <rect x="34.4" y="97.0" width="11.2" height="16.0" fill="white" opacity="0.85"/>
+  <text x="40.0" y="105.0" font-size="12.0" font-family="monospace" fill="#1565c0" text-anchor="middle" dominant-baseline="middle">A</text>
+  <line x1="235.0" y1="220.0" x2="160.0" y2="220.0" stroke="#1565c0" stroke-width="1.8"/>
+  <line x1="160.0" y1="220.0" x2="160.0" y2="115.0" stroke="#1565c0" stroke-width="1.8"/>
+  <rect x="-20.0" y="100.0" width="62.0" height="30.0" fill="white" opacity="0.85"/>
+  <path d="M -12.0 106.0 L 24.0 106.0 L 40.0 115.0 L 24.0 124.0 L -12.0 124.0 Z" fill="#ffffff" stroke="#1565c0" stroke-width="1.6"/>
+  <text x="11.0" y="115.0" font-size="12.0" fill="#1565c0" text-anchor="middle" dominant-baseline="middle" font-style="italic">A</text>
+  <rect x="271.0" y="175.0" width="62.0" height="30.0" fill="white" opacity="0.85"/>
+  <path d="M 325.0 181.0 L 289.0 181.0 L 273.0 190.0 L 289.0 199.0 L 325.0 199.0 Z" fill="#ffffff" stroke="#1565c0" stroke-width="1.6"/>
+  <text x="302.0" y="190.0" font-size="12.0" fill="#1565c0" text-anchor="middle" dominant-baseline="middle" font-style="italic">VCC</text>
+</svg>

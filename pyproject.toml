@@ -1,0 +1,80 @@
+[build-system]
+requires = ["setuptools>=65.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyschem"
+version = "0.1.0"
+description = "Python schematic rendering library"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [
+    {name = "PySchem Team", email = "team@pyschem.dev"}
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    "parsimonious>=0.9.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "ruff>=0.1.0",
+    "mypy>=1.5.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/pyschem-dev/pyschem"
+Repository = "https://github.com/pyschem-dev/pyschem"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["lib*", "pyschem*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --strict-markers --tb=short"
+markers = [
+    "unit: 单元测试，不依赖外部文件或网络",
+    "integration: 集成测试，依赖真实 KiCad 样本文件",
+    "regression: 回归测试，与 golden file 对比",
+    "P0: 阻塞发布的核心用例",
+    "P1: 建议覆盖的扩展用例",
+    "slow: 耗时较长的测试（集成/回归）",
+]
+
+[tool.coverage.run]
+source = ["lib"]
+omit = [
+    "lib/_version.py",
+    "lib/utils/*",
+]
+
+[tool.coverage.report]
+fail_under = 70
+show_missing = true
+
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4"]
+ignore = ["N802", "N818"]
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
