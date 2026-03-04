@@ -115,7 +115,7 @@ This project follows **Conventional Commits** (`conventionalcommits.org`).
 
 | Type | When to use |
 |---|---|
-| `feat` | New feature or capability |
+| `feature` | New feature or capability |
 | `fix` | Bug fix |
 | `refactor` | Code change with no behavior change |
 | `test` | Adding or updating tests |
@@ -131,7 +131,7 @@ Use the affected module or area: `core`, `render`, `symbols`, `svg`, `erc`, `exa
 ### Examples
 
 ```
-feat(render): add NetLabel flag rendering for top/bottom directions
+feature(render): add NetLabel flag rendering for top/bottom directions
 fix(core): handle missing pin key in _resolve_pin_key gracefully
 refactor(symbols): remove footprint support and related tests
 test(svg): add obstacle avoidance wire routing coverage
@@ -187,10 +187,10 @@ Use `tmp_path` (pytest built-in) for files generated during tests.
 | Branch | Purpose |
 |---|---|
 | `main` | Stable, always green |
-| `feat/<name>` | Feature development |
-| `fix/<name>` | Bug fixes |
-| `refactor/<name>` | Refactoring work |
-| `docs/<name>` | Documentation only |
+| `feature#<issue>` | Feature development |
+| `fix#<issue>` | Bug fixes |
+| `refactor#<issue>` | Refactoring work |
+| `docs#<issue>` | Documentation only |
 
 ### Pull Request Rules
 
