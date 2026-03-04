@@ -83,8 +83,17 @@ from __future__ import annotations
 
 import math
 from collections import Counter
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from typing import TYPE_CHECKING, List, Optional, Tuple, TypeVar
 
+from lib.core.render_style import (
+    BoxStyle,
+    HaloStyle,
+    NetLabelStyle,
+    PinStyle,
+    RenderStyle,
+    RenderTemplate as _RenderTemplateT,
+    WireStyle,
+)
 from lib.render.svg_renderer import SvgCanvas
 from lib.render.symbol_renderer import SymbolRenderer
 
@@ -92,7 +101,6 @@ if TYPE_CHECKING:
     from lib.core.schematic import Schematic
     from lib.core.part import Part
     from lib.core.page import PageConfig
-    from lib.core.render_style import RenderTemplate as _RenderTemplateT
 
 
 # ---------------------------------------------------------------------------
@@ -104,35 +112,40 @@ _COL_WIDTH = 180        # auto-layout: horizontal spacing between column centres
 _ROW_HEIGHT = 140       # auto-layout: vertical spacing between parts in a column
 _PARTS_PER_COL = 4      # max parts per column before wrapping to a new column
 
-# Symbol size constants
-_BOX_W = 80             # generic box width
-_BOX_MIN_H = 40         # minimum generic box height
-_BOX_PIN_ROW = 16       # height per pin row in auto-sized generic box
-_PIN_STUB = 20          # pin stub length from box edge
-
-# Font sizes (minimum readable values)
-_FONT_REF = 14
-_FONT_NET = 12
-_FONT_VALUE = 11
-_FONT_PIN = 10
-
-# Wire style
-_WIRE_COLOR = "#1565c0"
-_WIRE_WIDTH = 1.8
-_JUNCTION_R = 3.5       # junction dot radius
-_JUNCTION_COLOR = "#1565c0"
-
-# Label halo (white background behind net labels)
-_LABEL_HALO_PAD = 2     # padding around label text for the halo rect
-_LABEL_HALO_FILL = "white"
-_LABEL_HALO_OPACITY = "0.85"
-
 # Obstacle avoidance
 _OBSTACLE_CLEARANCE = 6  # px of extra clearance added around each component AABB
 
 # Cross-net wire avoidance
 _WIRE_SEG_CLEARANCE = 4   # px clearance zone around each drawn wire segment
 _WIRE_SEG_HALF = _WIRE_SEG_CLEARANCE  # half-width of the fattened segment obstacle
+
+_T = TypeVar("_T")
+
+
+def _default_wire_style() -> WireStyle:
+    return WireStyle.default()
+
+
+def _default_net_label_style() -> NetLabelStyle:
+    return NetLabelStyle.default()
+
+
+def _default_halo_style() -> HaloStyle:
+    return HaloStyle.default()
+
+
+def _default_box_style() -> BoxStyle:
+    return BoxStyle.default()
+
+
+def _default_pin_style() -> PinStyle:
+    return PinStyle.default()
+
+
+def _style_value(value: _T | None, *, field_name: str) -> _T:
+    if value is None:
+        raise ValueError(f"RenderStyle.default() produced None for {field_name}")
+    return value
 
 
 # ---------------------------------------------------------------------------
@@ -336,14 +349,10 @@ def render_schematic_svg(
         Complete SVG document as a string.
     """
     from lib.core.page import PageConfig as _PageConfig
-    from lib.core.render_style import (
-        RenderTemplate as _RenderTemplate,
-        WireStyle, NetLabelStyle, HaloStyle, BoxStyle, PinStyle, RenderStyle,
-    )
 
     # Resolve template → style sub-objects
     if template is None:
-        tmpl = _RenderTemplate.default()
+        tmpl = _RenderTemplateT.default()
     else:
         tmpl = template
 
@@ -351,38 +360,49 @@ def render_schematic_svg(
     base_style = RenderStyle.default()
     effective_style = base_style.merge(tmpl.style)
 
-    wire_style: WireStyle = effective_style.wire or WireStyle.default()
-    ln_style: NetLabelStyle = effective_style.label_net or NetLabelStyle.default()
-    halo_style: HaloStyle = effective_style.halo or HaloStyle.default()
-    box_style: BoxStyle = effective_style.box or BoxStyle.default()
-    pin_style: PinStyle = effective_style.pin or PinStyle.default()
+    wire_style: WireStyle = effective_style.wire or _default_wire_style()
+    ln_style: NetLabelStyle = effective_style.label_net or _default_net_label_style()
+    halo_style: HaloStyle = effective_style.halo or _default_halo_style()
+    box_style: BoxStyle = effective_style.box or _default_box_style()
+    pin_style: PinStyle = effective_style.pin or _default_pin_style()
 
     # Resolved style scalars — used throughout this function
-    wire_color: str = wire_style.color or _WIRE_COLOR
-    wire_width: float = wire_style.width if wire_style.width is not None else _WIRE_WIDTH
-    junction_r: float = wire_style.junction_radius if wire_style.junction_radius is not None else _JUNCTION_R
-    wire_dash: Optional[str] = wire_style.dash  # None → solid
+    wire_color: str = _style_value(wire_style.color, field_name="wire.color")
+    wire_width: float = _style_value(wire_style.width, field_name="wire.width")
+    junction_r: float = _style_value(wire_style.junction_radius, field_name="wire.junction_radius")
+    junction_color: str = _style_value(wire_style.junction_color, field_name="wire.junction_color")
+    wire_dash: str = _style_value(wire_style.dash, field_name="wire.dash")
 
-    ln_color: str = ln_style.color or "#000000"
-    ln_font_size: float = ln_style.font_size if ln_style.font_size is not None else _FONT_NET
-    ln_font_style: str = ln_style.font_style or "italic"
-    ln_overline: bool = ln_style.overline if ln_style.overline is not None else True
-    ln_body_fill: str = ln_style.body_fill or "#ffffff"
-    ln_body_stroke_width: float = ln_style.body_stroke_width if ln_style.body_stroke_width is not None else 1.2
-    ln_stem_stroke_width: float = ln_style.stem_stroke_width if ln_style.stem_stroke_width is not None else 1.4
+    ln_color: str = _style_value(ln_style.color, field_name="label_net.color")
+    ln_font_size: float = _style_value(ln_style.font_size, field_name="label_net.font_size")
+    ln_font_style: str = _style_value(ln_style.font_style, field_name="label_net.font_style")
+    ln_overline: bool = _style_value(ln_style.overline, field_name="label_net.overline")
+    ln_body_fill: str = _style_value(ln_style.body_fill, field_name="label_net.body_fill")
+    ln_body_stroke_width: float = _style_value(
+        ln_style.body_stroke_width, field_name="label_net.body_stroke_width"
+    )
+    ln_stem_stroke_width: float = _style_value(
+        ln_style.stem_stroke_width, field_name="label_net.stem_stroke_width"
+    )
 
-    halo_fill: str = halo_style.fill or _LABEL_HALO_FILL
-    halo_opacity: str = halo_style.opacity or _LABEL_HALO_OPACITY
-    halo_pad: float = halo_style.pad if halo_style.pad is not None else _LABEL_HALO_PAD
+    halo_fill: str = _style_value(halo_style.fill, field_name="halo.fill")
+    halo_opacity: str = _style_value(halo_style.opacity, field_name="halo.opacity")
+    halo_pad: float = _style_value(halo_style.pad, field_name="halo.pad")
 
-    box_stroke: str = box_style.stroke or "#333"
-    box_stroke_width: float = box_style.stroke_width if box_style.stroke_width is not None else 1.8
-    box_fill: str = box_style.fill or "none"
+    box_stroke: str = _style_value(box_style.stroke, field_name="box.stroke")
+    box_stroke_width: float = _style_value(box_style.stroke_width, field_name="box.stroke_width")
+    box_fill: str = _style_value(box_style.fill, field_name="box.fill")
+    box_width: float = _style_value(box_style.width, field_name="box.width")
+    box_min_height: float = _style_value(box_style.min_height, field_name="box.min_height")
+    box_pin_row_height: float = _style_value(box_style.pin_row_height, field_name="box.pin_row_height")
 
-    pin_stub_stroke: str = pin_style.stub_stroke or "#555"
-    pin_stub_stroke_width: float = pin_style.stub_stroke_width if pin_style.stub_stroke_width is not None else 1.5
-    pin_key_fill: str = pin_style.key_fill or "#333"
-    pin_value_fill: str = pin_style.value_fill or "#555"
+    pin_stub_stroke: str = _style_value(pin_style.stub_stroke, field_name="pin.stub_stroke")
+    pin_stub_stroke_width: float = _style_value(
+        pin_style.stub_stroke_width, field_name="pin.stub_stroke_width"
+    )
+    pin_stub_length: float = _style_value(pin_style.stub_length, field_name="pin.stub_length")
+    pin_key_fill: str = _style_value(pin_style.key_fill, field_name="pin.key_fill")
+    pin_value_fill: str = _style_value(pin_style.value_fill, field_name="pin.value_fill")
 
     symbol_renderer = SymbolRenderer(
         primitive_stroke=box_stroke,
@@ -393,11 +413,20 @@ def render_schematic_svg(
         value_text_fill=pin_value_fill,
     )
 
-    background: str = effective_style.background or "#ffffff"
-    font_ref: float = effective_style.ref_font_size if effective_style.ref_font_size is not None else _FONT_REF
-    font_net: float = effective_style.net_font_size if effective_style.net_font_size is not None else _FONT_NET
-    font_value: float = effective_style.value_font_size if effective_style.value_font_size is not None else _FONT_VALUE
-    font_pin: float = effective_style.pin_font_size if effective_style.pin_font_size is not None else _FONT_PIN
+    background: str = _style_value(effective_style.background, field_name="background")
+    font_ref: float = _style_value(
+        pin_style.font_ref if pin_style.font_ref is not None else effective_style.ref_font_size,
+        field_name="ref_font_size",
+    )
+    font_net: float = _style_value(effective_style.net_font_size, field_name="net_font_size")
+    font_value: float = _style_value(
+        pin_style.font_value if pin_style.font_value is not None else effective_style.value_font_size,
+        field_name="value_font_size",
+    )
+    font_pin: float = _style_value(
+        pin_style.font_pin if pin_style.font_pin is not None else effective_style.pin_font_size,
+        field_name="pin_font_size",
+    )
 
     # Resolve canvas dimensions — explicit page > template.page > legacy w/h > default
     if page is not None:
@@ -443,6 +472,7 @@ def render_schematic_svg(
             cy,
             symbol_name,
             symbol_renderer=symbol_renderer,
+            box_style=box_style,
         )
         obstacles.append(obs)
 
@@ -462,6 +492,8 @@ def render_schematic_svg(
             cy,
             symbol_name,
             symbol_renderer=symbol_renderer,
+            box_style=box_style,
+            pin_style=pin_style,
         )
         pin_endpoints.update(ep)
 
@@ -549,8 +581,12 @@ def render_schematic_svg(
                                 box_fill=box_fill,
                                 pin_stub_stroke=pin_stub_stroke,
                                 pin_stub_stroke_width=pin_stub_stroke_width,
+                                pin_stub_length=pin_stub_length,
                                 pin_key_fill=pin_key_fill,
-                                pin_value_fill=pin_value_fill)
+                                pin_value_fill=pin_value_fill,
+                                box_width=box_width,
+                                box_min_height=box_min_height,
+                                box_pin_row_height=box_pin_row_height)
 
     # Draw wires for each net.
     # Route nets with fewer pins first so that simple 2-pin wires (e.g. VCC/GND)
@@ -562,6 +598,7 @@ def render_schematic_svg(
         _draw_wire_net(
             canvas, pts, net_name, obstacles, drawn_segs,
             wire_color=wire_color, wire_width=wire_width,
+            wire_dash=wire_dash, junction_color=junction_color,
             junction_r=junction_r, font_net=font_net,
             halo_fill=halo_fill, halo_opacity=halo_opacity, halo_pad=halo_pad,
         )
@@ -704,10 +741,26 @@ def _part_position(
 # Generic box height helper
 # ---------------------------------------------------------------------------
 
-def _box_height(n_pins: int) -> float:
+def _box_height(
+    n_pins: int,
+    *,
+    box_min_height: float | None = None,
+    box_pin_row_height: float | None = None,
+) -> float:
     """Compute auto-sized box height for *n_pins* pins."""
+    default_box = _default_box_style()
+    min_h = (
+        _style_value(default_box.min_height, field_name="box.min_height")
+        if box_min_height is None
+        else box_min_height
+    )
+    pin_row = (
+        _style_value(default_box.pin_row_height, field_name="box.pin_row_height")
+        if box_pin_row_height is None
+        else box_pin_row_height
+    )
     n_side = max(1, math.ceil(n_pins / 2))
-    return max(_BOX_MIN_H, n_side * _BOX_PIN_ROW)
+    return max(min_h, n_side * pin_row)
 
 
 # ---------------------------------------------------------------------------
@@ -721,6 +774,7 @@ def _component_obstacle(
     symbol_name: str,
     *,
     symbol_renderer: SymbolRenderer | None = None,
+    box_style: BoxStyle | None = None,
 ) -> _Obstacle:
     """Return the routing obstacle (expanded AABB) for a component."""
     renderer = symbol_renderer or SymbolRenderer()
@@ -736,9 +790,14 @@ def _component_obstacle(
         x0, y0, x1, y1 = bbox
         return _Obstacle(x0, y0, x1, y1)
 
+    resolved_box = box_style or _default_box_style()
     pins = list(part.pins.items())
-    h = _box_height(len(pins))
-    w = _BOX_W
+    h = _box_height(
+        len(pins),
+        box_min_height=resolved_box.min_height,
+        box_pin_row_height=resolved_box.pin_row_height,
+    )
+    w = _style_value(resolved_box.width, field_name="box.width")
     x0, y0 = cx - w / 2, cy - h / 2
     return _Obstacle(x0, y0, x0 + w, y0 + h)
 
@@ -754,6 +813,8 @@ def _compute_pin_endpoints(
     symbol_name: str,
     *,
     symbol_renderer: SymbolRenderer | None = None,
+    box_style: BoxStyle | None = None,
+    pin_style: PinStyle | None = None,
 ) -> dict[tuple[str, str], tuple[float, float]]:
     """Return {(part_ref, pin_key): (px, py)} for all pins of *part*."""
     renderer = symbol_renderer or SymbolRenderer()
@@ -770,19 +831,29 @@ def _compute_pin_endpoints(
     if renderer.can_render(part, symbol_name):
         return endpoints
 
-    return _generic_box_pin_endpoints(part, cx, cy)
+    return _generic_box_pin_endpoints(part, cx, cy, box_style=box_style, pin_style=pin_style)
 
 
 def _generic_box_pin_endpoints(
     part: "Part",
     cx: float,
     cy: float,
+    *,
+    box_style: BoxStyle | None = None,
+    pin_style: PinStyle | None = None,
 ) -> dict[tuple[str, str], tuple[float, float]]:
     """Pin endpoints for generic box, matching _render_generic_box geometry."""
+    resolved_box = box_style or _default_box_style()
+    resolved_pin = pin_style or _default_pin_style()
     ref = part.ref or "?"
     pins = list(part.pins.items())
-    h = _box_height(len(pins))
-    w = _BOX_W
+    h = _box_height(
+        len(pins),
+        box_min_height=resolved_box.min_height,
+        box_pin_row_height=resolved_box.pin_row_height,
+    )
+    w = _style_value(resolved_box.width, field_name="box.width")
+    stub_len = _style_value(resolved_pin.stub_length, field_name="pin.stub_length")
     x0, y0 = cx - w / 2, cy - h / 2
     result: dict[tuple[str, str], tuple[float, float]] = {}
 
@@ -792,14 +863,14 @@ def _generic_box_pin_endpoints(
             # Left side
             row = i
             py = y0 + (row + 0.5) * (h / n_left)
-            ex = x0 - _PIN_STUB
+            ex = x0 - stub_len
             result[(ref, pin_key)] = (ex, py)
         else:
             # Right side
             row = i - n_left
             n_right = len(pins) - n_left
             py = y0 + (row + 0.5) * (h / max(n_right, 1))
-            ex = x0 + w + _PIN_STUB
+            ex = x0 + w + stub_len
             result[(ref, pin_key)] = (ex, py)
 
     return result
@@ -810,7 +881,7 @@ def _generic_box_pin_endpoints(
 # ---------------------------------------------------------------------------
 
 def _extract_wire_segs_from_elements(
-    elements: list[str], start: int, *, wire_color: str = _WIRE_COLOR
+    elements: list[str], start: int, *, wire_color: str | None = None
 ) -> list["_WireSegment"]:
     """Parse newly-added SVG <line> elements (from *start* index) into _WireSegments.
 
@@ -823,7 +894,13 @@ def _extract_wire_segs_from_elements(
     pat = re.compile(
         r'<line x1="([^"]+)" y1="([^"]+)" x2="([^"]+)" y2="([^"]+)"'
     )
-    wire_marker = f'stroke="{wire_color}"'
+    default_wire = _default_wire_style()
+    resolved_wire_color = (
+        _style_value(default_wire.color, field_name="wire.color")
+        if wire_color is None
+        else wire_color
+    )
+    wire_marker = f'stroke="{resolved_wire_color}"'
     for el in elements[start:]:
         if wire_marker not in el:
             continue
@@ -841,13 +918,15 @@ def _draw_wire_net(
     obstacles: list[_Obstacle],
     drawn_segs: "list[_WireSegment] | None" = None,
     *,
-    wire_color: str = _WIRE_COLOR,
-    wire_width: float = _WIRE_WIDTH,
-    junction_r: float = _JUNCTION_R,
-    font_net: float = _FONT_NET,
-    halo_fill: str = _LABEL_HALO_FILL,
-    halo_opacity: str = _LABEL_HALO_OPACITY,
-    halo_pad: float = _LABEL_HALO_PAD,
+    wire_color: str | None = None,
+    wire_width: float | None = None,
+    wire_dash: str | None = None,
+    junction_color: str | None = None,
+    junction_r: float | None = None,
+    font_net: float | None = None,
+    halo_fill: str | None = None,
+    halo_opacity: str | None = None,
+    halo_pad: float | None = None,
 ) -> None:
     """Draw Manhattan wire routes connecting all endpoints in *pts*.
 
@@ -858,6 +937,56 @@ def _draw_wire_net(
     routed nets.  These act as soft obstacles so that later nets reroute
     around already-drawn wires, preventing visual crossings.
     """
+    default_wire = _default_wire_style()
+    default_halo = _default_halo_style()
+    default_style = RenderStyle.default()
+
+    wire_color = (
+        _style_value(default_wire.color, field_name="wire.color")
+        if wire_color is None
+        else wire_color
+    )
+    wire_width = (
+        _style_value(default_wire.width, field_name="wire.width")
+        if wire_width is None
+        else wire_width
+    )
+    wire_dash = (
+        _style_value(default_wire.dash, field_name="wire.dash")
+        if wire_dash is None
+        else wire_dash
+    )
+    junction_color = (
+        _style_value(default_wire.junction_color, field_name="wire.junction_color")
+        if junction_color is None
+        else junction_color
+    )
+    junction_r = (
+        _style_value(default_wire.junction_radius, field_name="wire.junction_radius")
+        if junction_r is None
+        else junction_r
+    )
+    font_net = (
+        _style_value(default_style.net_font_size, field_name="net_font_size")
+        if font_net is None
+        else font_net
+    )
+    halo_fill = (
+        _style_value(default_halo.fill, field_name="halo.fill")
+        if halo_fill is None
+        else halo_fill
+    )
+    halo_opacity = (
+        _style_value(default_halo.opacity, field_name="halo.opacity")
+        if halo_opacity is None
+        else halo_opacity
+    )
+    halo_pad = (
+        _style_value(default_halo.pad, field_name="halo.pad")
+        if halo_pad is None
+        else halo_pad
+    )
+
     is_anon = net_name.startswith("_anon")
 
     if len(pts) < 1:
@@ -895,7 +1024,7 @@ def _draw_wire_net(
     if len(unique_pts) == 2:
         p0, p1 = unique_pts
         _draw_manhattan_wire(canvas, p0, p1, eff_obstacles,
-                             wire_color=wire_color, wire_width=wire_width)
+                             wire_color=wire_color, wire_width=wire_width, wire_dash=wire_dash)
     else:
         # Trunk tree: use median-x trunk, shifted away from obstacles if needed
         sorted_xs = sorted(set(p[0] for p in unique_pts))
@@ -909,14 +1038,14 @@ def _draw_wire_net(
         if trunk_y_min < trunk_y_max:
             _draw_vertical_avoiding(
                 canvas, trunk_x, trunk_y_min, trunk_y_max, eff_obstacles,
-                wire_color=wire_color, wire_width=wire_width,
+                wire_color=wire_color, wire_width=wire_width, wire_dash=wire_dash,
             )
 
         # Horizontal stubs from each point to trunk
         for px, py in unique_pts:
             if abs(px - trunk_x) > 0.5:
                 _draw_horizontal_stub(canvas, px, py, trunk_x, eff_obstacles,
-                                      wire_color=wire_color, wire_width=wire_width)
+                                      wire_color=wire_color, wire_width=wire_width, wire_dash=wire_dash)
 
         # Junctions at trunk intersections:
         # - Any point where a horizontal stub meets the trunk is a potential junction.
@@ -931,8 +1060,8 @@ def _draw_wire_net(
             is_multi = y_counts[py_round] >= 2
             if is_interior or is_multi:
                 canvas.circle(trunk_x, py, junction_r,
-                              stroke=wire_color, stroke_width=0,
-                              fill=wire_color)
+                              stroke=junction_color, stroke_width=0,
+                              fill=junction_color)
 
         # Update label position to trunk midpoint
         bbox_mid_x = trunk_x
@@ -989,8 +1118,9 @@ def _draw_vertical_avoiding(
     y_max: float,
     obstacles: list[_Obstacle],
     *,
-    wire_color: str = _WIRE_COLOR,
-    wire_width: float = _WIRE_WIDTH,
+    wire_color: str | None = None,
+    wire_width: float | None = None,
+    wire_dash: str | None = None,
 ) -> None:
     """Draw a vertical wire from (x, y_min) to (x, y_max), routing around obstacles.
 
@@ -1001,12 +1131,36 @@ def _draw_vertical_avoiding(
     recursion; if the detour sub-segments are also blocked the code falls back
     to a straight line for that sub-segment.
     """
+    default_wire = _default_wire_style()
+    wire_color = (
+        _style_value(default_wire.color, field_name="wire.color")
+        if wire_color is None
+        else wire_color
+    )
+    wire_width = (
+        _style_value(default_wire.width, field_name="wire.width")
+        if wire_width is None
+        else wire_width
+    )
+    wire_dash = (
+        _style_value(default_wire.dash, field_name="wire.dash")
+        if wire_dash is None
+        else wire_dash
+    )
     gap = _OBSTACLE_CLEARANCE
 
     # Collect obstacles that block the vertical trunk segment
     blocking = [o for o in obstacles if o.segment_hits(x, y_min, x, y_max)]
     if not blocking:
-        canvas.line(x, y_min, x, y_max, stroke=wire_color, stroke_width=wire_width)
+        canvas.line(
+            x,
+            y_min,
+            x,
+            y_max,
+            stroke=wire_color,
+            stroke_width=wire_width,
+            stroke_dasharray=wire_dash,
+        )
         return
 
     # Sort blocking obstacles top-to-bottom so we can process them in order
@@ -1030,6 +1184,7 @@ def _draw_vertical_avoiding(
             canvas.line(
                 x, current_y, x, enter_y,
                 stroke=wire_color, stroke_width=wire_width,
+                stroke_dasharray=wire_dash,
             )
 
         # Detour left or right around the obstacle
@@ -1043,9 +1198,18 @@ def _draw_vertical_avoiding(
             dx = dx_right
 
         # 3-segment detour: go horizontal to dx, vertical past obstacle, back
-        canvas.line(x, enter_y, dx, enter_y, stroke=wire_color, stroke_width=wire_width)
-        canvas.line(dx, enter_y, dx, exit_y, stroke=wire_color, stroke_width=wire_width)
-        canvas.line(dx, exit_y, x, exit_y, stroke=wire_color, stroke_width=wire_width)
+        canvas.line(
+            x, enter_y, dx, enter_y,
+            stroke=wire_color, stroke_width=wire_width, stroke_dasharray=wire_dash
+        )
+        canvas.line(
+            dx, enter_y, dx, exit_y,
+            stroke=wire_color, stroke_width=wire_width, stroke_dasharray=wire_dash
+        )
+        canvas.line(
+            dx, exit_y, x, exit_y,
+            stroke=wire_color, stroke_width=wire_width, stroke_dasharray=wire_dash
+        )
 
         current_y = exit_y
 
@@ -1054,6 +1218,7 @@ def _draw_vertical_avoiding(
         canvas.line(
             x, current_y, x, y_max,
             stroke=wire_color, stroke_width=wire_width,
+            stroke_dasharray=wire_dash,
         )
 
 
@@ -1064,22 +1229,45 @@ def _draw_horizontal_stub(
     trunk_x: float,
     obstacles: list[_Obstacle],
     *,
-    wire_color: str = _WIRE_COLOR,
-    wire_width: float = _WIRE_WIDTH,
+    wire_color: str | None = None,
+    wire_width: float | None = None,
+    wire_dash: str | None = None,
 ) -> None:
     """Draw a horizontal stub from (px, py) to (trunk_x, py).
 
     If the straight segment passes through an obstacle, a 3-segment detour
     is drawn around the obstacle (going above or below it).
     """
+    default_wire = _default_wire_style()
+    wire_color = (
+        _style_value(default_wire.color, field_name="wire.color")
+        if wire_color is None
+        else wire_color
+    )
+    wire_width = (
+        _style_value(default_wire.width, field_name="wire.width")
+        if wire_width is None
+        else wire_width
+    )
+    wire_dash = (
+        _style_value(default_wire.dash, field_name="wire.dash")
+        if wire_dash is None
+        else wire_dash
+    )
     if not _any_obstacle_hit(obstacles, px, py, trunk_x, py):
-        canvas.line(px, py, trunk_x, py, stroke=wire_color, stroke_width=wire_width)
+        canvas.line(
+            px, py, trunk_x, py,
+            stroke=wire_color, stroke_width=wire_width, stroke_dasharray=wire_dash
+        )
         return
 
     # Find the blocking obstacle and route around it
     blocking = [o for o in obstacles if o.segment_hits(px, py, trunk_x, py)]
     if not blocking:
-        canvas.line(px, py, trunk_x, py, stroke=wire_color, stroke_width=wire_width)
+        canvas.line(
+            px, py, trunk_x, py,
+            stroke=wire_color, stroke_width=wire_width, stroke_dasharray=wire_dash
+        )
         return
 
     obs = blocking[0]
@@ -1095,9 +1283,18 @@ def _draw_horizontal_stub(
         dy = detour_y_bot
 
     # 3-segment path: (px,py) → (px,dy) → (trunk_x,dy) → (trunk_x,py)
-    canvas.line(px, py, px, dy, stroke=wire_color, stroke_width=wire_width)
-    canvas.line(px, dy, trunk_x, dy, stroke=wire_color, stroke_width=wire_width)
-    canvas.line(trunk_x, dy, trunk_x, py, stroke=wire_color, stroke_width=wire_width)
+    canvas.line(
+        px, py, px, dy,
+        stroke=wire_color, stroke_width=wire_width, stroke_dasharray=wire_dash
+    )
+    canvas.line(
+        px, dy, trunk_x, dy,
+        stroke=wire_color, stroke_width=wire_width, stroke_dasharray=wire_dash
+    )
+    canvas.line(
+        trunk_x, dy, trunk_x, py,
+        stroke=wire_color, stroke_width=wire_width, stroke_dasharray=wire_dash
+    )
 
 
 def _draw_manhattan_wire(
@@ -1106,8 +1303,9 @@ def _draw_manhattan_wire(
     p1: tuple[float, float],
     obstacles: list[_Obstacle],
     *,
-    wire_color: str = _WIRE_COLOR,
-    wire_width: float = _WIRE_WIDTH,
+    wire_color: str | None = None,
+    wire_width: float | None = None,
+    wire_dash: str | None = None,
 ) -> None:
     """Draw an obstacle-aware L-shaped (Manhattan) wire from p0 to p1.
 
@@ -1121,13 +1319,29 @@ def _draw_manhattan_wire(
     4. If both simple L-routes are blocked, generate a 3-segment detour
        around the first blocking obstacle found.
     """
+    default_wire = _default_wire_style()
+    wire_color = (
+        _style_value(default_wire.color, field_name="wire.color")
+        if wire_color is None
+        else wire_color
+    )
+    wire_width = (
+        _style_value(default_wire.width, field_name="wire.width")
+        if wire_width is None
+        else wire_width
+    )
+    wire_dash = (
+        _style_value(default_wire.dash, field_name="wire.dash")
+        if wire_dash is None
+        else wire_dash
+    )
     x0, y0 = p0
     x1, y1 = p1
 
     if abs(x0 - x1) < 0.5 or abs(y0 - y1) < 0.5:
         # Already aligned — draw with possible detour
         _draw_segment_avoiding(canvas, x0, y0, x1, y1, obstacles,
-                               wire_color=wire_color, wire_width=wire_width)
+                               wire_color=wire_color, wire_width=wire_width, wire_dash=wire_dash)
         return
 
     bend_h = (x1, y0)  # bend point for H-first route
@@ -1143,13 +1357,25 @@ def _draw_manhattan_wire(
     )
 
     if h_ok:
-        canvas.line(x0, y0, x1, y0, stroke=wire_color, stroke_width=wire_width)
-        canvas.line(x1, y0, x1, y1, stroke=wire_color, stroke_width=wire_width)
+        canvas.line(
+            x0, y0, x1, y0,
+            stroke=wire_color, stroke_width=wire_width, stroke_dasharray=wire_dash
+        )
+        canvas.line(
+            x1, y0, x1, y1,
+            stroke=wire_color, stroke_width=wire_width, stroke_dasharray=wire_dash
+        )
         return
 
     if v_ok:
-        canvas.line(x0, y0, x0, y1, stroke=wire_color, stroke_width=wire_width)
-        canvas.line(x0, y1, x1, y1, stroke=wire_color, stroke_width=wire_width)
+        canvas.line(
+            x0, y0, x0, y1,
+            stroke=wire_color, stroke_width=wire_width, stroke_dasharray=wire_dash
+        )
+        canvas.line(
+            x0, y1, x1, y1,
+            stroke=wire_color, stroke_width=wire_width, stroke_dasharray=wire_dash
+        )
         return
 
     # Both L-routes blocked → detour around the first blocking obstacle
@@ -1161,8 +1387,14 @@ def _draw_manhattan_wire(
 
     if not blocking:
         # Nothing actually blocks — fall back to H-first
-        canvas.line(x0, y0, x1, y0, stroke=wire_color, stroke_width=wire_width)
-        canvas.line(x1, y0, x1, y1, stroke=wire_color, stroke_width=wire_width)
+        canvas.line(
+            x0, y0, x1, y0,
+            stroke=wire_color, stroke_width=wire_width, stroke_dasharray=wire_dash
+        )
+        canvas.line(
+            x1, y0, x1, y1,
+            stroke=wire_color, stroke_width=wire_width, stroke_dasharray=wire_dash
+        )
         return
 
     obs = blocking[0]
@@ -1182,11 +1414,11 @@ def _draw_manhattan_wire(
     # Use _draw_segment_avoiding for each sub-segment so that
     # individual segments that are themselves blocked get re-routed.
     _draw_segment_avoiding(canvas, x0, y0, x0, dy, obstacles,
-                           wire_color=wire_color, wire_width=wire_width)
+                           wire_color=wire_color, wire_width=wire_width, wire_dash=wire_dash)
     _draw_segment_avoiding(canvas, x0, dy, x1, dy, obstacles,
-                           wire_color=wire_color, wire_width=wire_width)
+                           wire_color=wire_color, wire_width=wire_width, wire_dash=wire_dash)
     _draw_segment_avoiding(canvas, x1, dy, x1, y1, obstacles,
-                           wire_color=wire_color, wire_width=wire_width)
+                           wire_color=wire_color, wire_width=wire_width, wire_dash=wire_dash)
 
 
 def _draw_segment_avoiding(
@@ -1195,8 +1427,9 @@ def _draw_segment_avoiding(
     x1: float, y1: float,
     obstacles: list[_Obstacle],
     *,
-    wire_color: str = _WIRE_COLOR,
-    wire_width: float = _WIRE_WIDTH,
+    wire_color: str | None = None,
+    wire_width: float | None = None,
+    wire_dash: str | None = None,
 ) -> None:
     """Draw a straight (H or V) segment from (x0,y0) to (x1,y1).
 
@@ -1206,13 +1439,35 @@ def _draw_segment_avoiding(
     layout), it falls back to drawing a straight line to ensure the wire
     always terminates at the requested endpoint.
     """
+    default_wire = _default_wire_style()
+    wire_color = (
+        _style_value(default_wire.color, field_name="wire.color")
+        if wire_color is None
+        else wire_color
+    )
+    wire_width = (
+        _style_value(default_wire.width, field_name="wire.width")
+        if wire_width is None
+        else wire_width
+    )
+    wire_dash = (
+        _style_value(default_wire.dash, field_name="wire.dash")
+        if wire_dash is None
+        else wire_dash
+    )
     if not _any_obstacle_hit(obstacles, x0, y0, x1, y1):
-        canvas.line(x0, y0, x1, y1, stroke=wire_color, stroke_width=wire_width)
+        canvas.line(
+            x0, y0, x1, y1,
+            stroke=wire_color, stroke_width=wire_width, stroke_dasharray=wire_dash
+        )
         return
 
     blocking = [o for o in obstacles if o.segment_hits(x0, y0, x1, y1)]
     if not blocking:
-        canvas.line(x0, y0, x1, y1, stroke=wire_color, stroke_width=wire_width)
+        canvas.line(
+            x0, y0, x1, y1,
+            stroke=wire_color, stroke_width=wire_width, stroke_dasharray=wire_dash
+        )
         return
 
     obs = blocking[0]
@@ -1224,18 +1479,36 @@ def _draw_segment_avoiding(
         dy_bot = obs.y1 + gap
         dy = dy_top if abs(y0 - dy_top) <= abs(y0 - dy_bot) else dy_bot
         # Draw 3-segment detour straight (no further recursion)
-        canvas.line(x0, y0, x0, dy, stroke=wire_color, stroke_width=wire_width)
-        canvas.line(x0, dy, x1, dy, stroke=wire_color, stroke_width=wire_width)
-        canvas.line(x1, dy, x1, y1, stroke=wire_color, stroke_width=wire_width)
+        canvas.line(
+            x0, y0, x0, dy,
+            stroke=wire_color, stroke_width=wire_width, stroke_dasharray=wire_dash
+        )
+        canvas.line(
+            x0, dy, x1, dy,
+            stroke=wire_color, stroke_width=wire_width, stroke_dasharray=wire_dash
+        )
+        canvas.line(
+            x1, dy, x1, y1,
+            stroke=wire_color, stroke_width=wire_width, stroke_dasharray=wire_dash
+        )
         return
 
     # Vertical segment blocked → detour left or right
     dx_left = obs.x0 - gap
     dx_right = obs.x1 + gap
     dx = dx_left if abs(x0 - dx_left) <= abs(x0 - dx_right) else dx_right
-    canvas.line(x0, y0, dx, y0, stroke=wire_color, stroke_width=wire_width)
-    canvas.line(dx, y0, dx, y1, stroke=wire_color, stroke_width=wire_width)
-    canvas.line(dx, y1, x1, y1, stroke=wire_color, stroke_width=wire_width)
+    canvas.line(
+        x0, y0, dx, y0,
+        stroke=wire_color, stroke_width=wire_width, stroke_dasharray=wire_dash
+    )
+    canvas.line(
+        dx, y0, dx, y1,
+        stroke=wire_color, stroke_width=wire_width, stroke_dasharray=wire_dash
+    )
+    canvas.line(
+        dx, y1, x1, y1,
+        stroke=wire_color, stroke_width=wire_width, stroke_dasharray=wire_dash
+    )
 
 
 def _draw_net_label(
@@ -1244,17 +1517,46 @@ def _draw_net_label(
     y: float,
     net_name: str,
     *,
-    wire_color: str = _WIRE_COLOR,
-    font_net: float = _FONT_NET,
-    halo_fill: str = _LABEL_HALO_FILL,
-    halo_opacity: str = _LABEL_HALO_OPACITY,
-    halo_pad: float = _LABEL_HALO_PAD,
+    wire_color: str | None = None,
+    font_net: float | None = None,
+    halo_fill: str | None = None,
+    halo_opacity: str | None = None,
+    halo_pad: float | None = None,
 ) -> None:
     """Draw a net label with a white halo background at (x, y).
 
     The halo is a semi-transparent white rectangle drawn before the text,
     ensuring readability over wire lines (netlistsvg technique).
     """
+    default_wire = _default_wire_style()
+    default_halo = _default_halo_style()
+    default_style = RenderStyle.default()
+    wire_color = (
+        _style_value(default_wire.color, field_name="wire.color")
+        if wire_color is None
+        else wire_color
+    )
+    font_net = (
+        _style_value(default_style.net_font_size, field_name="net_font_size")
+        if font_net is None
+        else font_net
+    )
+    halo_fill = (
+        _style_value(default_halo.fill, field_name="halo.fill")
+        if halo_fill is None
+        else halo_fill
+    )
+    halo_opacity = (
+        _style_value(default_halo.opacity, field_name="halo.opacity")
+        if halo_opacity is None
+        else halo_opacity
+    )
+    halo_pad = (
+        _style_value(default_halo.pad, field_name="halo.pad")
+        if halo_pad is None
+        else halo_pad
+    )
+
     char_w = font_net * 0.6
     text_w = len(net_name) * char_w
     halo_x = x - text_w / 2 - halo_pad
@@ -1403,15 +1705,15 @@ def _draw_flag_label(
     *,
     side: str = "left",
     align_x: float | None = None,
-    wire_color: str = _WIRE_COLOR,
-    ln_color: str = "#000000",
-    ln_font_size: float = _FONT_NET,
-    ln_font_style: str = "italic",
-    ln_body_fill: str = "#ffffff",
-    ln_body_stroke_width: float = 1.2,
-    ln_stem_stroke_width: float = 1.4,
-    halo_fill: str = _LABEL_HALO_FILL,
-    halo_opacity: str = _LABEL_HALO_OPACITY,
+    wire_color: str | None = None,
+    ln_color: str | None = None,
+    ln_font_size: float | None = None,
+    ln_font_style: str | None = None,
+    ln_body_fill: str | None = None,
+    ln_body_stroke_width: float | None = None,
+    ln_stem_stroke_width: float | None = None,
+    halo_fill: str | None = None,
+    halo_opacity: str | None = None,
 ) -> None:
     """Draw a label-net as a small *symbol-like component*.
 
@@ -1429,6 +1731,56 @@ def _draw_flag_label(
     that all left-side labels in the same schematic align their bodies to the
     same vertical line (a purely horizontal stem connects each pin to it).
     """
+    default_wire = _default_wire_style()
+    default_ln = _default_net_label_style()
+    default_halo = _default_halo_style()
+
+    wire_color = (
+        _style_value(default_wire.color, field_name="wire.color")
+        if wire_color is None
+        else wire_color
+    )
+    ln_color = (
+        _style_value(default_ln.color, field_name="label_net.color")
+        if ln_color is None
+        else ln_color
+    )
+    ln_font_size = (
+        _style_value(default_ln.font_size, field_name="label_net.font_size")
+        if ln_font_size is None
+        else ln_font_size
+    )
+    ln_font_style = (
+        _style_value(default_ln.font_style, field_name="label_net.font_style")
+        if ln_font_style is None
+        else ln_font_style
+    )
+    ln_body_fill = (
+        _style_value(default_ln.body_fill, field_name="label_net.body_fill")
+        if ln_body_fill is None
+        else ln_body_fill
+    )
+    ln_body_stroke_width = (
+        ln_body_stroke_width
+        if ln_body_stroke_width is not None
+        else _style_value(default_ln.body_stroke_width, field_name="label_net.body_stroke_width")
+    )
+    ln_stem_stroke_width = (
+        ln_stem_stroke_width
+        if ln_stem_stroke_width is not None
+        else _style_value(default_ln.stem_stroke_width, field_name="label_net.stem_stroke_width")
+    )
+    halo_fill = (
+        _style_value(default_halo.fill, field_name="halo.fill")
+        if halo_fill is None
+        else halo_fill
+    )
+    halo_opacity = (
+        _style_value(default_halo.opacity, field_name="halo.opacity")
+        if halo_opacity is None
+        else halo_opacity
+    )
+
     pad_x = 8.0
     tip_x, tip_y, box_x, box_y, box_w, box_h, text_x, text_y = _flag_label_geometry(
         x, y, net_name, side=side, ln_font_size=ln_font_size, align_x=align_x
@@ -1520,25 +1872,98 @@ def _render_generic_box(
     cx: float,
     cy: float,
     *,
-    font_ref: float = _FONT_REF,
-    font_value: float = _FONT_VALUE,
-    font_pin: float = _FONT_PIN,
-    box_stroke: str = "#333",
-    box_stroke_width: float = 1.8,
-    box_fill: str = "none",
-    pin_stub_stroke: str = "#555",
-    pin_stub_stroke_width: float = 1.5,
-    pin_key_fill: str = "#333",
-    pin_value_fill: str = "#555",
+    font_ref: float | None = None,
+    font_value: float | None = None,
+    font_pin: float | None = None,
+    box_stroke: str | None = None,
+    box_stroke_width: float | None = None,
+    box_fill: str | None = None,
+    pin_stub_stroke: str | None = None,
+    pin_stub_stroke_width: float | None = None,
+    pin_stub_length: float | None = None,
+    pin_key_fill: str | None = None,
+    pin_value_fill: str | None = None,
+    box_width: float | None = None,
+    box_min_height: float | None = None,
+    box_pin_row_height: float | None = None,
 ) -> None:
     """Render a generic part as a labelled rectangle with pin stubs.
 
     Box height is auto-sized based on pin count so that pins are not
     crowded (netlistsvg-style adaptive height).
     """
+    default_style = RenderStyle.default()
+    default_box = _default_box_style()
+    default_pin = _default_pin_style()
+
+    font_ref = (
+        _style_value(default_style.ref_font_size, field_name="ref_font_size")
+        if font_ref is None
+        else font_ref
+    )
+    font_value = (
+        _style_value(default_style.value_font_size, field_name="value_font_size")
+        if font_value is None
+        else font_value
+    )
+    font_pin = (
+        _style_value(default_style.pin_font_size, field_name="pin_font_size")
+        if font_pin is None
+        else font_pin
+    )
+    box_stroke = (
+        _style_value(default_box.stroke, field_name="box.stroke")
+        if box_stroke is None
+        else box_stroke
+    )
+    box_stroke_width = box_stroke_width if box_stroke_width is not None else (
+        _style_value(default_box.stroke_width, field_name="box.stroke_width")
+    )
+    box_fill = _style_value(default_box.fill, field_name="box.fill") if box_fill is None else box_fill
+    pin_stub_stroke = (
+        _style_value(default_pin.stub_stroke, field_name="pin.stub_stroke")
+        if pin_stub_stroke is None
+        else pin_stub_stroke
+    )
+    pin_stub_stroke_width = (
+        pin_stub_stroke_width
+        if pin_stub_stroke_width is not None
+        else _style_value(default_pin.stub_stroke_width, field_name="pin.stub_stroke_width")
+    )
+    pin_stub_length = (
+        pin_stub_length
+        if pin_stub_length is not None
+        else _style_value(default_pin.stub_length, field_name="pin.stub_length")
+    )
+    pin_key_fill = _style_value(default_pin.key_fill, field_name="pin.key_fill") if pin_key_fill is None else pin_key_fill
+    pin_value_fill = (
+        _style_value(default_pin.value_fill, field_name="pin.value_fill")
+        if pin_value_fill is None
+        else pin_value_fill
+    )
+    box_width = (
+        _style_value(default_box.width, field_name="box.width")
+        if box_width is None
+        else box_width
+    )
+    box_min_height = (
+        box_min_height
+        if box_min_height is not None
+        else _style_value(default_box.min_height, field_name="box.min_height")
+    )
+    box_pin_row_height = (
+        box_pin_row_height
+        if box_pin_row_height is not None
+        else _style_value(default_box.pin_row_height, field_name="box.pin_row_height")
+    )
+
     pins = list(part.pins.items())
-    h = _box_height(len(pins))
-    w = _BOX_W
+    h = _box_height(
+        len(pins),
+        box_min_height=box_min_height,
+        box_pin_row_height=box_pin_row_height,
+    )
+    w = box_width
     x0, y0 = cx - w / 2, cy - h / 2
 
     # Box outline
@@ -1566,7 +1991,7 @@ def _render_generic_box(
             row = i
             py = y0 + (row + 0.5) * (h / n_left)
             px = x0
-            ex = x0 - _PIN_STUB
+            ex = x0 - pin_stub_length
             anchor = "end"
             lx = ex - 4
         else:
@@ -1574,7 +1999,7 @@ def _render_generic_box(
             n_right = len(pins) - n_left
             py = y0 + (row + 0.5) * (h / max(n_right, 1))
             px = x0 + w
-            ex = x0 + w + _PIN_STUB
+            ex = x0 + w + pin_stub_length
             anchor = "start"
             lx = ex + 4
 

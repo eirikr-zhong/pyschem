@@ -42,12 +42,12 @@ import pytest
 
 from lib.core.connect import connect
 from lib.core.part import NetLabel, Part
+from lib.core.render_style import BoxStyle
 from lib.core.style import Style
 from lib.render.schematic_svg import (
     _Obstacle,
     _any_obstacle_hit,
     _component_obstacle,
-    _BOX_W,
     _OBSTACLE_CLEARANCE,
     _box_height,
     _draw_vertical_avoiding,
@@ -122,6 +122,12 @@ def _extract_viewbox(svg: str) -> tuple[float, float, float, float]:
 def _extract_font_sizes(svg: str) -> list[float]:
     """Return all font-size values found in the SVG."""
     return [float(v) for v in re.findall(r'font-size="([^"]+)"', svg)]
+
+
+def _box_width() -> float:
+    width = BoxStyle.default().width
+    assert width is not None
+    return width
 
 
 # ===========================================================================
@@ -397,9 +403,9 @@ class TestObstacleUnit:
         h = _box_height(len(list(p.pins)))  # 2 pins → _BOX_MIN_H=40
         obs = _component_obstacle(p, cx, cy, "SomeIC")
         # Raw box: x0=cx-40, y0=cy-h/2; expanded by _OBSTACLE_CLEARANCE
-        expected_x0 = cx - _BOX_W / 2 - _OBSTACLE_CLEARANCE
+        expected_x0 = cx - _box_width() / 2 - _OBSTACLE_CLEARANCE
         expected_y0 = cy - h / 2 - _OBSTACLE_CLEARANCE
-        expected_x1 = cx + _BOX_W / 2 + _OBSTACLE_CLEARANCE
+        expected_x1 = cx + _box_width() / 2 + _OBSTACLE_CLEARANCE
         expected_y1 = cy + h / 2 + _OBSTACLE_CLEARANCE
         assert abs(obs.x0 - expected_x0) < 0.1
         assert abs(obs.y0 - expected_y0) < 0.1
@@ -452,7 +458,7 @@ class TestObstacleAvoidanceIntegration:
     def _box_bounds(self, cx: float, cy: float, n_pins: int = 2):
         """Return (x0, y0, x1, y1) of the raw component box (no clearance)."""
         h = _box_height(n_pins)
-        return (cx - _BOX_W / 2, cy - h / 2, cx + _BOX_W / 2, cy + h / 2)
+        return (cx - _box_width() / 2, cy - h / 2, cx + _box_width() / 2, cy + h / 2)
 
     def _segment_crosses_box(
         self,
@@ -579,7 +585,7 @@ class TestObstacleAvoidanceIntegration:
         but RB is placed on the direct H-first path between the two pin
         endpoints.
         """
-        from lib.render.schematic_svg import _MARGIN, _BOX_W
+        from lib.render.schematic_svg import _MARGIN
 
         sch = Schematic("obs_explicit")
         r1 = Part("Device:R", ref="R1")
@@ -647,7 +653,7 @@ class TestVerticalTrunkAvoidance:
 
     def _box_bounds(self, cx: float, cy: float, n_pins: int = 2):
         h = _box_height(n_pins)
-        return (cx - _BOX_W / 2, cy - h / 2, cx + _BOX_W / 2, cy + h / 2)
+        return (cx - _box_width() / 2, cy - h / 2, cx + _box_width() / 2, cy + h / 2)
 
     def _segment_crosses_box(
         self,

@@ -3,6 +3,8 @@
 Test-ID prefix: RS-
 """
 
+import dataclasses
+
 import pytest
 
 from lib.core.render_style import NetLabelStyle, RenderStyle, WireStyle
@@ -19,8 +21,9 @@ class TestWireStyle:
         ws = WireStyle.default()
         assert ws.color == "#1565c0"
         assert ws.width == 1.8
-        assert ws.dash is None
+        assert ws.dash == ""
         assert ws.junction_radius == 3.0
+        assert ws.junction_color == "#1565c0"
 
     def test_RS02_blank_is_all_none(self):
         """RS-02: WireStyle() without args has all None fields."""
@@ -29,6 +32,7 @@ class TestWireStyle:
         assert ws.width is None
         assert ws.dash is None
         assert ws.junction_radius is None
+        assert ws.junction_color is None
 
     def test_RS03_merge_override_single_field(self):
         """RS-03: merge() replaces only explicitly set fields."""
@@ -50,12 +54,19 @@ class TestWireStyle:
     def test_RS05_merge_full_override_wins(self):
         """RS-05: merging a fully specified override takes all override values."""
         base = WireStyle.default()
-        override = WireStyle(color="#000000", width=3.0, dash="4 2", junction_radius=5.0)
+        override = WireStyle(
+            color="#000000",
+            width=3.0,
+            dash="4 2",
+            junction_radius=5.0,
+            junction_color="#777777",
+        )
         merged = base.merge(override)
         assert merged.color == "#000000"
         assert merged.width == 3.0
         assert merged.dash == "4 2"
         assert merged.junction_radius == 5.0
+        assert merged.junction_color == "#777777"
 
     def test_RS06_merge_returns_new_instance(self):
         """RS-06: merge() does not mutate base or override."""
@@ -205,3 +216,16 @@ class TestRenderStyle:
         assert merged.wire.color == "#aaaaaa"    # from layer1
         assert merged.wire.width == 3.0           # from layer2
         assert merged.background == "#111111"    # from layer1
+
+    def test_RS23_default_has_no_none_fields_anywhere(self):
+        """RS-23: RenderStyle.default() tree has no None field values."""
+        rs = RenderStyle.default()
+
+        def _walk(value, path: str = "root"):
+            if dataclasses.is_dataclass(value):
+                for f in dataclasses.fields(value):
+                    _walk(getattr(value, f.name), f"{path}.{f.name}")
+                return
+            assert value is not None, f"Found None at {path}"
+
+        _walk(rs)

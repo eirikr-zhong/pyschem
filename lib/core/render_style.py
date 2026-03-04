@@ -73,14 +73,16 @@ class WireStyle:
     Attributes:
         color:     CSS colour string, e.g. ``"#1565c0"`` (blue).
         width:     Stroke width in SVG user-units (px).
-        dash:      SVG ``stroke-dasharray`` value, or ``None`` for solid lines.
+        dash:      SVG ``stroke-dasharray`` value. Empty string means solid line.
         junction_radius: Radius of junction dots at T-intersections.
+        junction_color:  Fill/stroke colour of junction dots.
     """
 
     color: Optional[str] = None
     width: Optional[float] = None
     dash: Optional[str] = None
     junction_radius: Optional[float] = None
+    junction_color: Optional[str] = None
 
     @classmethod
     def default(cls) -> "WireStyle":
@@ -88,8 +90,9 @@ class WireStyle:
         return cls(
             color="#1565c0",
             width=1.8,
-            dash=None,
+            dash="",
             junction_radius=3.0,
+            junction_color="#1565c0",
         )
 
     def merge(self, override: "WireStyle") -> "WireStyle":
@@ -144,16 +147,29 @@ class BoxStyle:
         stroke:       CSS stroke colour.  Default: ``"#333333"``.
         stroke_width: Stroke width in px.  Default: ``1.8``.
         fill:         CSS fill colour.  Default: ``"none"``.
+        width:        Generic box width in px. Default: ``80.0``.
+        min_height:   Minimum generic box height in px. Default: ``40.0``.
+        pin_row_height: Generic-box pin row height in px. Default: ``16.0``.
     """
 
     stroke: Optional[str] = None
     stroke_width: Optional[float] = None
     fill: Optional[str] = None
+    width: Optional[float] = None
+    min_height: Optional[float] = None
+    pin_row_height: Optional[float] = None
 
     @classmethod
     def default(cls) -> "BoxStyle":
         """Return a fully-specified default box style."""
-        return cls(stroke="#333", stroke_width=1.8, fill="none")
+        return cls(
+            stroke="#333",
+            stroke_width=1.8,
+            fill="none",
+            width=80.0,
+            min_height=40.0,
+            pin_row_height=16.0,
+        )
 
     def merge(self, override: "BoxStyle") -> "BoxStyle":
         """Return a new :class:`BoxStyle` with *override* fields applied."""
@@ -172,14 +188,22 @@ class PinStyle:
     Attributes:
         stub_stroke:       Stroke colour of pin stub lines.  Default: ``"#555555"``.
         stub_stroke_width: Stroke width of pin stub lines (px).  Default: ``1.5``.
+        stub_length:       Pin stub length from component edge (px). Default: ``20.0``.
         key_fill:          Fill colour for pin key text labels.  Default: ``"#333333"``.
         value_fill:        Fill colour for component value text.  Default: ``"#555555"``.
+        font_ref:          Font size of component reference text. Default: ``14.0``.
+        font_value:        Font size of component value text. Default: ``11.0``.
+        font_pin:          Font size of pin key text. Default: ``10.0``.
     """
 
     stub_stroke: Optional[str] = None
     stub_stroke_width: Optional[float] = None
+    stub_length: Optional[float] = None
     key_fill: Optional[str] = None
     value_fill: Optional[str] = None
+    font_ref: Optional[float] = None
+    font_value: Optional[float] = None
+    font_pin: Optional[float] = None
 
     @classmethod
     def default(cls) -> "PinStyle":
@@ -187,8 +211,12 @@ class PinStyle:
         return cls(
             stub_stroke="#555",
             stub_stroke_width=1.5,
+            stub_length=20.0,
             key_fill="#333",
             value_fill="#555",
+            font_ref=14.0,
+            font_value=11.0,
+            font_pin=10.0,
         )
 
     def merge(self, override: "PinStyle") -> "PinStyle":
