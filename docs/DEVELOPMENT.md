@@ -55,11 +55,6 @@ PySchem/
 - Coverage-focused test files: `test_cov_<module>.py`
 - Fixture files: match original tool naming (e.g., `Amplifier_Buffer.kicad_sym`)
 
-### Symbols and Nets
-
-- Net names: `UPPER_SNAKE_CASE` for power rails (`VCC`, `GND`), `PascalCase` or descriptive for signals (`N_Q1_STAGE`, `SIG`)
-- Part references: standard EDA convention (`R1`, `Q1`, `C3`)
-
 ---
 
 ## Code Style
