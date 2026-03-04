@@ -137,6 +137,7 @@ class TestRenderStyle:
     def test_RS13_default_fields(self):
         """RS-13: RenderStyle.default() returns fully-specified values."""
         rs = RenderStyle.default()
+        assert rs.canvas_scale == 1.0
         assert rs.background == "#ffffff"
         assert rs.ref_font_size == 14.0
         assert rs.value_font_size == 11.0
@@ -153,6 +154,7 @@ class TestRenderStyle:
         assert rs.wire is None
         assert rs.label_net is None
         assert rs.symbol is None
+        assert rs.canvas_scale is None
         assert rs.background is None
 
     def test_RS15_merge_scalar_field(self):
@@ -239,3 +241,16 @@ class TestRenderStyle:
             assert value is not None, f"Found None at {path}"
 
         _walk(rs)
+
+    def test_RS24_merge_canvas_scale_scalar(self):
+        """RS-24: RenderStyle.merge() applies canvas_scale as scalar override."""
+        base = RenderStyle.default()
+        merged = base.merge(RenderStyle(canvas_scale=2.0))
+        assert merged.canvas_scale == 2.0
+        assert base.canvas_scale == 1.0
+
+    def test_RS25_merge_canvas_scale_none_keeps_base(self):
+        """RS-25: RenderStyle.merge() keeps base canvas_scale when override is None."""
+        base = RenderStyle.default()
+        merged = base.merge(RenderStyle(background="#101010"))
+        assert merged.canvas_scale == 1.0

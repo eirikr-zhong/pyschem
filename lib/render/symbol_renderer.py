@@ -94,10 +94,17 @@ class SymbolRenderer:
         _, _, max_x, _ = self._symbol_body_bbox(symbol) or (-20.0, -20.0, 20.0, 20.0)
         ref = part.ref or ""
         value = part.value or ""
+        ref_x, ref_y, value_x, value_y = self._ref_value_positions(
+            cx,
+            cy,
+            max_x=max_x,
+            font_ref=font_ref,
+            font_value=font_value,
+        )
         if ref:
             canvas.text(
-                cx + max_x + 4.0,
-                cy - 8.0,
+                ref_x,
+                ref_y,
                 ref,
                 font_size=font_ref,
                 anchor="start",
@@ -105,8 +112,8 @@ class SymbolRenderer:
             )
         if value:
             canvas.text(
-                cx + max_x + 4.0,
-                cy + 8.0,
+                value_x,
+                value_y,
                 value,
                 font_size=font_value,
                 fill=self._style.value_text_fill,
@@ -290,7 +297,7 @@ class SymbolRenderer:
         if not label or label == "~":
             return
 
-        tx, ty, anchor = self._pin_label_position(pin, end_x, end_y)
+        tx, ty, anchor = self._pin_label_position(pin, end_x, end_y, font_pin=font_pin)
         canvas.text(
             cx + tx,
             cy + ty,
@@ -302,9 +309,10 @@ class SymbolRenderer:
         )
 
     def _pin_label_position(
-        self, pin: PinDefinition, end_x: float, end_y: float
+        self, pin: PinDefinition, end_x: float, end_y: float, *, font_pin: float = 10.0
     ) -> tuple[float, float, str]:
-        offset = 8.0
+        scale = max(1.0, self._style.symbol_scale)
+        offset = max(8.0, font_pin * 0.8 + (scale - 1.0) * 2.5)
         orientation = pin.orientation % 360
         if orientation == 180:
             return (end_x - offset, end_y, "end")
@@ -317,6 +325,23 @@ class SymbolRenderer:
         if end_x < 0:
             return (end_x - offset, end_y, "end")
         return (end_x + offset, end_y, "start")
+
+    def _ref_value_positions(
+        self,
+        cx: float,
+        cy: float,
+        *,
+        max_x: float,
+        font_ref: float,
+        font_value: float,
+    ) -> tuple[float, float, float, float]:
+        """Return world-space positions for reference and value texts."""
+        scale = max(1.0, self._style.symbol_scale)
+        x_offset = max(4.0, font_ref * 0.35 + (scale - 1.0) * 3.0)
+        y_offset_ref = max(8.0, font_ref * 0.8 + (scale - 1.0) * 4.0)
+        y_offset_value = max(8.0, font_value * 0.8 + (scale - 1.0) * 4.0)
+        x = cx + max_x + x_offset
+        return (x, cy - y_offset_ref, x, cy + y_offset_value)
 
     # ------------------------------------------------------------------
     # Geometry helpers

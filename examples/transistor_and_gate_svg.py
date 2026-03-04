@@ -23,6 +23,7 @@ from pathlib import Path
 from pyschem import (
     NetLabel,
     NetLabelStyle,
+    PageConfig,
     Part,
     RenderStyle,
     RenderTemplate,
@@ -88,13 +89,24 @@ sch.place(r5, x=155, y=110)
 # Wiring (R uses numeric pins; PNP uses B/C/E)
 # ---------------------------------------------------------------------------
 
-# Reset wiring and apply requested minimal connections only:
-# 1) A -> R1(1)
+# Inputs
 connect(nl_a.label_pin, r1.pin("1"))
-# 2) R1(2) -> Q1(B)
+connect(nl_b.label_pin, r2.pin("1"))
+
+# First-stage drive
 connect(r1.pin("2"), q1.pin("B"))
-# 3) VCC -> Q1(3) (Q_PNP_CBE emitter pin)
-connect(nl_vcc.label_pin, q1.pin("3"))
+connect(r2.pin("2"), q1.pin("B"))
+connect(nl_vcc.label_pin, q1.pin("E"))
+connect(q1.pin("B"), r4.pin("1"))
+connect(r4.pin("2"), nl_gnd.label_pin)
+
+# Inter-stage and output stage
+connect(q1.pin("C"), r3.pin("1"))
+connect(r3.pin("2"), q2.pin("B"))
+connect(q2.pin("B"), r5.pin("1"))
+connect(r5.pin("2"), nl_gnd.label_pin)
+connect(nl_vcc.label_pin, q2.pin("E"))
+connect(q2.pin("C"), nl_a_and_b.label_pin)
 
 # ---------------------------------------------------------------------------
 # Export
@@ -102,12 +114,15 @@ connect(nl_vcc.label_pin, q1.pin("3"))
 
 svg_path = "out/transistor_and_gate.svg"
 wire_color = "#1565c0"
+canvas_scale = 2.0
 render_template = RenderTemplate.from_style(
     RenderStyle(
         wire=WireStyle(color=wire_color),
         label_net=NetLabelStyle(color=wire_color),
-        symbol=SymbolStyle(scale=1.8),
-    )
+        symbol=SymbolStyle(scale=6.0),
+        canvas_scale=canvas_scale,
+    ),
+    page=PageConfig.a1(landscape=True),
 )
 sch.export_svg(svg_path, template=render_template)
 
@@ -117,8 +132,8 @@ content = svg_file.read_text(encoding="utf-8")
 m = re.search(r'viewBox="([^"]+)"', content)
 if m:
     _, _, vb_w, vb_h = [float(x) for x in m.group(1).split()]
-    content = re.sub(r'width="[^"]+"', f'width="{vb_w:.1f}"', content, count=1)
-    content = re.sub(r'height="[^"]+"', f'height="{vb_h:.1f}"', content, count=1)
+    content = re.sub(r'width="[^"]+"', f'width="{vb_w * canvas_scale:.1f}"', content, count=1)
+    content = re.sub(r'height="[^"]+"', f'height="{vb_h * canvas_scale:.1f}"', content, count=1)
     svg_file.write_text(content, encoding="utf-8")
 
 print(svg_path)

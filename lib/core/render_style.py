@@ -321,6 +321,9 @@ class RenderStyle:
         box:             Generic component box outline style.
         pin:             Pin stub and annotation style.
         symbol:          Library symbol rendering controls (e.g. scale).
+        canvas_scale:    Overall output scaling factor applied at SVG export
+                         time (width/height pixel density). ``1.0`` keeps
+                         legacy behaviour; values > 1 improve readability.
         background:      SVG canvas background colour.
         ref_font_size:   Font size for component reference designators.
         value_font_size: Font size for component value text.
@@ -334,6 +337,7 @@ class RenderStyle:
     box: Optional[BoxStyle] = None
     pin: Optional[PinStyle] = None
     symbol: Optional[SymbolStyle] = None
+    canvas_scale: Optional[float] = None
     background: Optional[str] = None
     ref_font_size: Optional[float] = None
     value_font_size: Optional[float] = None
@@ -350,6 +354,7 @@ class RenderStyle:
             box=BoxStyle.default(),
             pin=PinStyle.default(),
             symbol=SymbolStyle.default(),
+            canvas_scale=1.0,
             background="#ffffff",
             ref_font_size=14.0,
             value_font_size=11.0,

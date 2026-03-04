@@ -405,6 +405,9 @@ def render_schematic_svg(
     symbol_scale = 1.0
     if effective_style.symbol is not None and effective_style.symbol.scale is not None:
         symbol_scale = max(0.1, float(effective_style.symbol.scale))
+    canvas_scale = 1.0
+    if effective_style.canvas_scale is not None:
+        canvas_scale = max(0.1, float(effective_style.canvas_scale))
 
     symbol_renderer = SymbolRenderer(
         primitive_stroke=box_stroke,
@@ -547,6 +550,10 @@ def render_schematic_svg(
                 side = auto_side
             label_net_pin_endpoints.append((nl.net_name, pt, side, auto_side))
 
+    flagged_endpoints_by_net: dict[str, set[tuple[float, float]]] = {}
+    for net_name, pt, _, _ in label_net_pin_endpoints:
+        flagged_endpoints_by_net.setdefault(net_name, set()).add(pt)
+
     # --- Phase 4: draw into a tracking canvas -------------------------------
     canvas = _TrackingCanvas(canvas_w, canvas_h, background=background)
 
@@ -593,12 +600,15 @@ def render_schematic_svg(
     drawn_segs: list[_WireSegment] = []
     sorted_net_items = sorted(net_components, key=lambda kv: len(kv[1]))
     for net_name, pts in sorted_net_items:
+        flagged_points = flagged_endpoints_by_net.get(net_name, set())
+        show_wire_label = not any(point in flagged_points for point in pts)
         _draw_wire_net(
             canvas, pts, net_name, obstacles, drawn_segs,
             wire_color=wire_color, wire_width=wire_width,
             wire_dash=wire_dash, junction_color=junction_color,
             junction_r=junction_r, font_net=font_net,
             halo_fill=halo_fill, halo_opacity=halo_opacity, halo_pad=halo_pad,
+            show_label=show_wire_label,
         )
 
     # Draw NetLabel flag labels (one per pin, no wire routing).
@@ -608,12 +618,26 @@ def render_schematic_svg(
     left_align_x: float | None = max(_left_xs) if _left_xs else None
 
     seen_label_pts: set[tuple[float, float]] = set()
-    occupied_label_slots: dict[tuple[str, int, int], int] = {}
+    occupied_label_boxes: list[tuple[float, float, float, float]] = []
+    extra_label_clearance = max(
+        0.0,
+        max(font_ref, font_value, font_pin) * 0.5 + max(0.0, symbol_scale - 1.0) * font_pin
+    )
+    flag_obstacles: list[_Obstacle] = list(obstacles)
+    if extra_label_clearance > 0.0:
+        for obs in obstacles:
+            flag_obstacles.append(
+                _Obstacle(obs.x0, obs.y0, obs.x1, obs.y1, clearance=extra_label_clearance)
+            )
+
+    row_step = max(ln_font_size + 4.0, font_pin + 2.0)
+    row_offsets = [0.0, row_step, -row_step, row_step * 2.0, -row_step * 2.0]
     for net_name, pt, side, auto_side in label_net_pin_endpoints:
         if pt not in seen_label_pts:
             seen_label_pts.add(pt)
             selected_side = side
             selected_align_x = left_align_x if selected_side == "left" else None
+            selected_y = pt[1]
 
             # Keep labels from sitting on component bodies:
             # 1) preferred side  2) auto side  3) opposite side  4) vertical fallback
@@ -624,17 +648,35 @@ def render_schematic_svg(
                 if candidate not in unique_candidates:
                     unique_candidates.append(candidate)
 
+            placed = False
             for candidate in unique_candidates:
                 candidate_align_x = left_align_x if candidate == "left" else None
-                if not _flag_label_hits_obstacles(
-                    pt[0], pt[1], net_name,
-                    side=candidate, align_x=candidate_align_x,
-                    obstacles=obstacles, ln_font_size=ln_font_size,
-                ):
+                for y_offset in row_offsets:
+                    trial_y = pt[1] + y_offset
+                    if _flag_label_hits_obstacles(
+                        pt[0], trial_y, net_name,
+                        side=candidate, align_x=candidate_align_x,
+                        obstacles=flag_obstacles, ln_font_size=ln_font_size,
+                    ):
+                        continue
+                    trial_box = _flag_label_box(
+                        pt[0], trial_y, net_name,
+                        side=candidate,
+                        ln_font_size=ln_font_size,
+                        halo_pad=halo_pad,
+                        align_x=candidate_align_x,
+                    )
+                    if _boxes_overlap_any(trial_box, occupied_label_boxes):
+                        continue
                     selected_side = candidate
                     selected_align_x = candidate_align_x
+                    selected_y = trial_y
+                    placed = True
                     break
-            else:
+                if placed:
+                    break
+
+            if not placed:
                 nudge_candidates = [auto_side, opposite_side, side]
                 for candidate in nudge_candidates:
                     if candidate not in {"left", "right"}:
@@ -643,39 +685,37 @@ def render_schematic_svg(
                     nudged_align_x = _nudge_horizontal_flag_tip(
                         pt[0], pt[1], net_name,
                         side=candidate, align_x=candidate_align_x,
-                        obstacles=obstacles, ln_font_size=ln_font_size,
+                        obstacles=flag_obstacles, ln_font_size=ln_font_size,
                     )
                     if nudged_align_x is None:
                         continue
-                    if not _flag_label_hits_obstacles(
-                        pt[0], pt[1], net_name,
-                        side=candidate, align_x=nudged_align_x,
-                        obstacles=obstacles, ln_font_size=ln_font_size,
-                    ):
+                    for y_offset in row_offsets:
+                        trial_y = pt[1] + y_offset
+                        if _flag_label_hits_obstacles(
+                            pt[0], trial_y, net_name,
+                            side=candidate, align_x=nudged_align_x,
+                            obstacles=flag_obstacles, ln_font_size=ln_font_size,
+                        ):
+                            continue
+                        trial_box = _flag_label_box(
+                            pt[0], trial_y, net_name,
+                            side=candidate,
+                            ln_font_size=ln_font_size,
+                            halo_pad=halo_pad,
+                            align_x=nudged_align_x,
+                        )
+                        if _boxes_overlap_any(trial_box, occupied_label_boxes):
+                            continue
                         selected_side = candidate
                         selected_align_x = nudged_align_x
+                        selected_y = trial_y
+                        placed = True
+                        break
+                    if placed:
                         break
 
-            draw_x, draw_y = pt[0], pt[1]
-            # De-overlap labels that resolve to the same slot (same net + near-identical text center).
-            for _ in range(4):
-                _, _, _, _, _, _, tx, ty = _flag_label_geometry(
-                    draw_x,
-                    draw_y,
-                    net_name,
-                    side=selected_side,
-                    ln_font_size=ln_font_size,
-                    align_x=selected_align_x,
-                )
-                slot = (net_name, int(round(tx)), int(round(ty)))
-                n = occupied_label_slots.get(slot, 0)
-                if n == 0:
-                    occupied_label_slots[slot] = 1
-                    break
-                draw_y += 12.0
-
             _draw_flag_label(
-                canvas, draw_x, draw_y, net_name, side=selected_side, align_x=selected_align_x,
+                canvas, pt[0], selected_y, net_name, side=selected_side, align_x=selected_align_x,
                 wire_color=wire_color,
                 ln_color=ln_color,
                 ln_font_size=ln_font_size,
@@ -685,10 +725,22 @@ def render_schematic_svg(
                 ln_stem_stroke_width=ln_stem_stroke_width,
                 halo_fill=halo_fill,
                 halo_opacity=halo_opacity,
+                halo_pad=halo_pad,
+            )
+            occupied_label_boxes.append(
+                _flag_label_box(
+                    pt[0],
+                    selected_y,
+                    net_name,
+                    side=selected_side,
+                    ln_font_size=ln_font_size,
+                    halo_pad=halo_pad,
+                    align_x=selected_align_x,
+                )
             )
 
     # --- Phase 5: apply fit-to-content viewBox -----------------------------
-    return canvas.to_svg_fit(margin=_MARGIN)
+    return canvas.to_svg_fit(margin=_MARGIN, output_scale=canvas_scale)
 
 
 # ---------------------------------------------------------------------------
@@ -926,6 +978,7 @@ def _draw_wire_net(
     halo_fill: str | None = None,
     halo_opacity: str | None = None,
     halo_pad: float | None = None,
+    show_label: bool = True,
 ) -> None:
     """Draw Manhattan wire routes connecting all endpoints in *pts*.
 
@@ -994,7 +1047,7 @@ def _draw_wire_net(
     unique_pts = list(dict.fromkeys(pts))  # deduplicate preserving order
 
     # Single-pin net: no wire to draw but still show the net name label
-    if len(unique_pts) == 1 and not is_anon:
+    if len(unique_pts) == 1 and not is_anon and show_label:
         px, py = unique_pts[0]
         _draw_net_label(canvas, px, py - 10, net_name,
                         wire_color=wire_color, font_net=font_net,
@@ -1073,7 +1126,7 @@ def _draw_wire_net(
         drawn_segs.extend(new_segs)
 
     # Draw wire-net label for named nets (not anonymous)
-    if not is_anon:
+    if not is_anon and show_label:
         _draw_net_label(canvas, bbox_mid_x, bbox_mid_y - 10, net_name,
                         wire_color=wire_color, font_net=font_net,
                         halo_fill=halo_fill, halo_opacity=halo_opacity, halo_pad=halo_pad)
@@ -1622,6 +1675,49 @@ def _flag_label_geometry(
     return tip_x, tip_y, box_x, box_y, box_w, box_h, text_x, text_y
 
 
+def _flag_label_box(
+    x: float,
+    y: float,
+    net_name: str,
+    *,
+    side: str,
+    ln_font_size: float,
+    halo_pad: float,
+    align_x: float | None = None,
+) -> tuple[float, float, float, float]:
+    """Return conservative (x0, y0, x1, y1) bounds for a flag label."""
+    _, _, box_x, box_y, box_w, box_h, _, _ = _flag_label_geometry(
+        x, y, net_name, side=side, ln_font_size=ln_font_size, align_x=align_x
+    )
+    # Include halo padding used by _draw_flag_label so overlap checks match render.
+    halo_pad_x, halo_pad_y = _flag_label_halo_padding(halo_pad)
+    return (
+        box_x - halo_pad_x,
+        box_y - halo_pad_y,
+        box_x + box_w + halo_pad_x,
+        box_y + box_h + halo_pad_y,
+    )
+
+
+def _flag_label_halo_padding(halo_pad: float) -> tuple[float, float]:
+    """Return (pad_x, pad_y) used by flag-label halo geometry."""
+    # Keep legacy default visual when halo.pad=2.0 -> (8, 6),
+    # while still allowing template-level halo pad scaling.
+    return (max(2.0, halo_pad + 6.0), max(2.0, halo_pad + 4.0))
+
+
+def _boxes_overlap_any(
+    box: tuple[float, float, float, float],
+    others: list[tuple[float, float, float, float]],
+) -> bool:
+    """Return True if *box* overlaps any box in *others*."""
+    x0, y0, x1, y1 = box
+    for ox0, oy0, ox1, oy1 in others:
+        if _rects_overlap(x0, y0, x1, y1, ox0, oy0, ox1, oy1):
+            return True
+    return False
+
+
 def _rects_overlap(
     ax0: float, ay0: float, ax1: float, ay1: float,
     bx0: float, by0: float, bx1: float, by1: float,
@@ -1713,6 +1809,7 @@ def _draw_flag_label(
     ln_stem_stroke_width: float | None = None,
     halo_fill: str | None = None,
     halo_opacity: str | None = None,
+    halo_pad: float | None = None,
 ) -> None:
     """Draw a label-net as a small *symbol-like component*.
 
@@ -1779,17 +1876,22 @@ def _draw_flag_label(
         if halo_opacity is None
         else halo_opacity
     )
+    halo_pad = (
+        _style_value(default_halo.pad, field_name="halo.pad")
+        if halo_pad is None
+        else halo_pad
+    )
 
-    pad_x = 8.0
+    pad_x, pad_y = _flag_label_halo_padding(halo_pad)
     tip_x, tip_y, box_x, box_y, box_w, box_h, text_x, text_y = _flag_label_geometry(
         x, y, net_name, side=side, ln_font_size=ln_font_size, align_x=align_x
     )
 
     # Halo (covers body + any horizontal stem)
     halo_x = box_x - pad_x
-    halo_y = box_y - 6
+    halo_y = box_y - pad_y
     halo_w = box_w + pad_x * 2
-    halo_h = box_h + 12
+    halo_h = box_h + pad_y * 2
     canvas._elements.append(
         f'<rect x="{halo_x:.1f}" y="{halo_y:.1f}" width="{halo_w:.1f}" height="{halo_h:.1f}" '
         f'fill="{halo_fill}" opacity="{halo_opacity}"/>'
@@ -2042,11 +2144,37 @@ class _TrackingCanvas(SvgCanvas):
     # Fit-to-content serialisation
     # ------------------------------------------------------------------
 
-    def to_svg_fit(self, margin: float = 40) -> str:
-        """Return SVG string with viewBox fitted to content + *margin*."""
+    def to_svg_fit(self, margin: float = 40, output_scale: float = 1.0) -> str:
+        """Return SVG string with viewBox fitted to content + *margin*.
+
+        Args:
+            margin: Extra whitespace around tracked content in viewBox units.
+            output_scale: Final SVG output scaling factor. This multiplies the
+                exported ``width``/``height`` attributes while keeping logical
+                drawing coordinates unchanged.
+        """
+        scale = max(0.1, float(output_scale))
+        if abs(scale - 1.0) < 1e-9:
+            scaled_width = self._width
+            scaled_height = self._height
+        else:
+            scaled_width = self._width * scale
+            scaled_height = self._height * scale
         if self._min_x == float("inf"):
             # Nothing was drawn — fall back to full-page viewBox
-            return self.to_svg()
+            header = (
+                f'<?xml version="1.0" encoding="UTF-8"?>\n'
+                f'<svg xmlns="http://www.w3.org/2000/svg"'
+                f' width="{scaled_width}" height="{scaled_height}"'
+                f' viewBox="0 0 {self._width} {self._height}">\n'
+            )
+            if self._background and self._background != "none":
+                header += (
+                    f'  <rect width="{self._width}" height="{self._height}"'
+                    f' fill="{self._background}"/>\n'
+                )
+            body = "\n".join(f"  {el}" for el in self._elements)
+            return header + body + "\n</svg>\n"
 
         vb_x = self._min_x - margin
         vb_y = self._min_y - margin
@@ -2060,7 +2188,7 @@ class _TrackingCanvas(SvgCanvas):
         header = (
             f'<?xml version="1.0" encoding="UTF-8"?>\n'
             f'<svg xmlns="http://www.w3.org/2000/svg"'
-            f' width="{self._width}" height="{self._height}"'
+            f' width="{scaled_width}" height="{scaled_height}"'
             f' viewBox="{vb_x:.1f} {vb_y:.1f} {vb_w:.1f} {vb_h:.1f}">\n'
         )
         if self._background and self._background != "none":

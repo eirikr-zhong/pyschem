@@ -1,62 +1,135 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="1021.8" height="457.0" viewBox="-60.0 -27.0 1021.8 457.0">
+<svg xmlns="http://www.w3.org/2000/svg" width="2753.8" height="955.4" viewBox="-65.1 -27.0 1376.9 477.7">
   <rect width="100%" height="100%" fill="#ffffff"/>
-  <text x="842.0" y="20" font-size="14.0" font-family="monospace" fill="black" text-anchor="middle" dominant-baseline="middle">transistor_and_gate</text>
+  <text x="1192.0" y="20" font-size="14.0" font-family="monospace" fill="black" text-anchor="middle" dominant-baseline="middle">transistor_and_gate</text>
   <g transform="rotate(-90,235.000,190.000)">
-  <circle cx="235.0" cy="190.0" r="18.0" stroke="#333" stroke-width="1.8" fill="none"/>
-  <line x1="205.0" y1="190.0" x2="217.0" y2="190.0" stroke="#333" stroke-width="1.8"/>
-  <line x1="228.7" y1="178.3" x2="228.7" y2="201.7" stroke="#333" stroke-width="2.7"/>
-  <line x1="228.7" y1="181.0" x2="235.0" y2="172.0" stroke="#333" stroke-width="1.8"/>
-  <line x1="235.0" y1="172.0" x2="235.0" y2="152.0" stroke="#333" stroke-width="1.8"/>
-  <line x1="228.7" y1="199.0" x2="235.0" y2="208.0" stroke="#333" stroke-width="1.8"/>
-  <line x1="235.0" y1="208.0" x2="235.0" y2="228.0" stroke="#333" stroke-width="1.8"/>
-  <polygon points="228.7,199.0 234.35270025158138,202.36704319333325 229.92884788077856,205.46373985289523" stroke="#333" stroke-width="0.5" fill="black"/>
-  <text x="243.0" y="152.0" font-size="10.0" font-family="monospace" fill="#333" text-anchor="start" dominant-baseline="middle">C</text>
-  <text x="197.0" y="190.0" font-size="10.0" font-family="monospace" fill="#333" text-anchor="end" dominant-baseline="middle">B</text>
-  <text x="243.0" y="228.0" font-size="10.0" font-family="monospace" fill="#333" text-anchor="start" dominant-baseline="middle">E</text>
-  <text x="257.0" y="182.0" font-size="14.0" font-family="monospace" fill="black" text-anchor="start" dominant-baseline="middle">Q1</text>
+  <polyline points="219.76,190.0 238.81,190.0" stroke="#333" stroke-width="1.8" fill="none"/>
+  <polyline points="238.81,201.43 238.81,178.57" stroke="#333" stroke-width="0.508" fill="none"/>
+  <polyline points="238.81,193.81 250.24,205.24" stroke="#333" stroke-width="1.8" fill="none"/>
+  <polyline points="238.81,186.19 250.24,174.76" stroke="#333" stroke-width="1.8" fill="none"/>
+  <circle cx="242.62" cy="190.0" r="16.9164" stroke="#333" stroke-width="0.254" fill="none"/>
+  <polygon points="248.716,179.332 245.668,176.284 242.62,182.38 248.716,179.332" stroke="#333" stroke-width="1.8" fill="black"/>
+  <line x1="204.52" y1="190.0" x2="189.28" y2="190.0" stroke="#555" stroke-width="1.5"/>
+  <text x="209.78" y="190.0" font-size="10.0" font-family="monospace" fill="#333" text-anchor="start" dominant-baseline="middle">B</text>
+  <line x1="250.24" y1="220.48" x2="250.24" y2="205.24" stroke="#555" stroke-width="1.5"/>
+  <text x="250.24" y="225.74" font-size="10.0" font-family="monospace" fill="#333" text-anchor="middle" dominant-baseline="middle">C</text>
+  <line x1="250.24" y1="159.52" x2="250.24" y2="174.76" stroke="#555" stroke-width="1.5"/>
+  <text x="250.24" y="154.26" font-size="10.0" font-family="monospace" fill="#333" text-anchor="middle" dominant-baseline="middle">E</text>
+  <text x="279.4364" y="158.8" font-size="14.0" font-family="monospace" fill="black" text-anchor="start" dominant-baseline="middle">Q1</text>
   </g>
-  <circle cx="505.0" cy="190.0" r="18.0" stroke="#333" stroke-width="1.8" fill="none"/>
-  <line x1="475.0" y1="190.0" x2="487.0" y2="190.0" stroke="#333" stroke-width="1.8"/>
-  <line x1="498.7" y1="178.3" x2="498.7" y2="201.7" stroke="#333" stroke-width="2.7"/>
-  <line x1="498.7" y1="181.0" x2="505.0" y2="172.0" stroke="#333" stroke-width="1.8"/>
-  <line x1="505.0" y1="172.0" x2="505.0" y2="152.0" stroke="#333" stroke-width="1.8"/>
-  <line x1="498.7" y1="199.0" x2="505.0" y2="208.0" stroke="#333" stroke-width="1.8"/>
-  <line x1="505.0" y1="208.0" x2="505.0" y2="228.0" stroke="#333" stroke-width="1.8"/>
-  <polygon points="498.7,199.0 504.3527002515814,202.36704319333325 499.92884788077856,205.46373985289523" stroke="#333" stroke-width="0.5" fill="black"/>
-  <text x="513.0" y="152.0" font-size="10.0" font-family="monospace" fill="#333" text-anchor="start" dominant-baseline="middle">C</text>
-  <text x="467.0" y="190.0" font-size="10.0" font-family="monospace" fill="#333" text-anchor="end" dominant-baseline="middle">B</text>
-  <text x="513.0" y="228.0" font-size="10.0" font-family="monospace" fill="#333" text-anchor="start" dominant-baseline="middle">E</text>
-  <text x="527.0" y="182.0" font-size="14.0" font-family="monospace" fill="black" text-anchor="start" dominant-baseline="middle">Q2</text>
-  <polyline points="60.0,95.0 140.0,95.0 140.0,135.0 60.0,135.0 60.0,95.0" stroke="#333" stroke-width="1.8" fill="none"/>
-  <text x="100.0" y="108.0" font-size="14.0" font-family="monospace" fill="black" text-anchor="middle" dominant-baseline="middle">R1</text>
-  <text x="100.0" y="123.0" font-size="11.0" font-family="monospace" fill="#555" text-anchor="middle" dominant-baseline="middle">10K</text>
-  <line x1="60.0" y1="115.0" x2="40.0" y2="115.0" stroke="#555" stroke-width="1.5"/>
-  <text x="36.0" y="115.0" font-size="10.0" font-family="monospace" fill="#333" text-anchor="end" dominant-baseline="middle">1</text>
-  <line x1="140.0" y1="115.0" x2="160.0" y2="115.0" stroke="#555" stroke-width="1.5"/>
-  <text x="164.0" y="115.0" font-size="10.0" font-family="monospace" fill="#333" text-anchor="start" dominant-baseline="middle">2</text>
-  <polyline points="60.0,245.0 140.0,245.0 140.0,285.0 60.0,285.0 60.0,245.0" stroke="#333" stroke-width="1.8" fill="none"/>
-  <text x="100.0" y="258.0" font-size="14.0" font-family="monospace" fill="black" text-anchor="middle" dominant-baseline="middle">R2</text>
-  <text x="100.0" y="273.0" font-size="11.0" font-family="monospace" fill="#555" text-anchor="middle" dominant-baseline="middle">10K</text>
-  <polyline points="360.0,170.0 440.0,170.0 440.0,210.0 360.0,210.0 360.0,170.0" stroke="#333" stroke-width="1.8" fill="none"/>
-  <text x="400.0" y="183.0" font-size="14.0" font-family="monospace" fill="black" text-anchor="middle" dominant-baseline="middle">R3</text>
-  <text x="400.0" y="198.0" font-size="11.0" font-family="monospace" fill="#555" text-anchor="middle" dominant-baseline="middle">10K</text>
-  <polyline points="195.0,350.0 275.0,350.0 275.0,390.0 195.0,390.0 195.0,350.0" stroke="#333" stroke-width="1.8" fill="none"/>
-  <text x="235.0" y="363.0" font-size="14.0" font-family="monospace" fill="black" text-anchor="middle" dominant-baseline="middle">R4</text>
-  <text x="235.0" y="378.0" font-size="11.0" font-family="monospace" fill="#555" text-anchor="middle" dominant-baseline="middle">10K</text>
-  <polyline points="465.0,350.0 545.0,350.0 545.0,390.0 465.0,390.0 465.0,350.0" stroke="#333" stroke-width="1.8" fill="none"/>
-  <text x="505.0" y="363.0" font-size="14.0" font-family="monospace" fill="black" text-anchor="middle" dominant-baseline="middle">R5</text>
-  <text x="505.0" y="378.0" font-size="11.0" font-family="monospace" fill="#555" text-anchor="middle" dominant-baseline="middle">10K</text>
-  <rect x="260.2" y="172.0" width="25.6" height="16.0" fill="white" opacity="0.85"/>
-  <text x="273.0" y="180.0" font-size="12.0" font-family="monospace" fill="#1565c0" text-anchor="middle" dominant-baseline="middle">VCC</text>
-  <rect x="34.4" y="97.0" width="11.2" height="16.0" fill="white" opacity="0.85"/>
-  <text x="40.0" y="105.0" font-size="12.0" font-family="monospace" fill="#1565c0" text-anchor="middle" dominant-baseline="middle">A</text>
-  <line x1="235.0" y1="220.0" x2="160.0" y2="220.0" stroke="#1565c0" stroke-width="1.8"/>
-  <line x1="160.0" y1="220.0" x2="160.0" y2="115.0" stroke="#1565c0" stroke-width="1.8"/>
-  <rect x="-20.0" y="100.0" width="62.0" height="30.0" fill="white" opacity="0.85"/>
-  <path d="M -12.0 106.0 L 24.0 106.0 L 40.0 115.0 L 24.0 124.0 L -12.0 124.0 Z" fill="#ffffff" stroke="#1565c0" stroke-width="1.6"/>
-  <text x="11.0" y="115.0" font-size="12.0" fill="#1565c0" text-anchor="middle" dominant-baseline="middle" font-style="italic">A</text>
-  <rect x="271.0" y="175.0" width="62.0" height="30.0" fill="white" opacity="0.85"/>
-  <path d="M 325.0 181.0 L 289.0 181.0 L 273.0 190.0 L 289.0 199.0 L 325.0 199.0 Z" fill="#ffffff" stroke="#1565c0" stroke-width="1.6"/>
-  <text x="302.0" y="190.0" font-size="12.0" fill="#1565c0" text-anchor="middle" dominant-baseline="middle" font-style="italic">VCC</text>
+  <polyline points="489.76,190.0 508.81,190.0" stroke="#333" stroke-width="1.8" fill="none"/>
+  <polyline points="508.81,201.43 508.81,178.57" stroke="#333" stroke-width="0.508" fill="none"/>
+  <polyline points="508.81,193.81 520.24,205.24" stroke="#333" stroke-width="1.8" fill="none"/>
+  <polyline points="508.81,186.19 520.24,174.76" stroke="#333" stroke-width="1.8" fill="none"/>
+  <circle cx="512.62" cy="190.0" r="16.9164" stroke="#333" stroke-width="0.254" fill="none"/>
+  <polygon points="518.716,179.332 515.668,176.284 512.62,182.38 518.716,179.332" stroke="#333" stroke-width="1.8" fill="black"/>
+  <line x1="474.52" y1="190.0" x2="459.28" y2="190.0" stroke="#555" stroke-width="1.5"/>
+  <text x="479.78" y="190.0" font-size="10.0" font-family="monospace" fill="#333" text-anchor="start" dominant-baseline="middle">B</text>
+  <line x1="520.24" y1="220.48" x2="520.24" y2="205.24" stroke="#555" stroke-width="1.5"/>
+  <text x="520.24" y="225.74" font-size="10.0" font-family="monospace" fill="#333" text-anchor="middle" dominant-baseline="middle">C</text>
+  <line x1="520.24" y1="159.52" x2="520.24" y2="174.76" stroke="#555" stroke-width="1.5"/>
+  <text x="520.24" y="154.26" font-size="10.0" font-family="monospace" fill="#333" text-anchor="middle" dominant-baseline="middle">E</text>
+  <text x="549.4363999999999" y="158.8" font-size="14.0" font-family="monospace" fill="black" text-anchor="start" dominant-baseline="middle">Q2</text>
+  <polygon points="93.904,99.76 106.096,99.76 106.096,130.24 93.904,130.24 93.904,99.76" stroke="#333" stroke-width="0.254" fill="none"/>
+  <line x1="100.0" y1="137.86" x2="100.0" y2="130.24" stroke="#555" stroke-width="1.5"/>
+  <text x="100.0" y="150.74" font-size="10.0" font-family="monospace" fill="#333" text-anchor="middle" dominant-baseline="middle">1</text>
+  <line x1="100.0" y1="92.14" x2="100.0" y2="99.76" stroke="#555" stroke-width="1.5"/>
+  <text x="100.0" y="79.26" font-size="10.0" font-family="monospace" fill="#333" text-anchor="middle" dominant-baseline="middle">2</text>
+  <text x="125.99600000000001" y="83.8" font-size="14.0" font-family="monospace" fill="black" text-anchor="start" dominant-baseline="middle">R1</text>
+  <text x="125.99600000000001" y="143.8" font-size="11.0" font-family="monospace" fill="#555" text-anchor="start" dominant-baseline="middle">10K</text>
+  <polygon points="93.904,249.76 106.096,249.76 106.096,280.24 93.904,280.24 93.904,249.76" stroke="#333" stroke-width="0.254" fill="none"/>
+  <line x1="100.0" y1="287.86" x2="100.0" y2="280.24" stroke="#555" stroke-width="1.5"/>
+  <text x="100.0" y="300.74" font-size="10.0" font-family="monospace" fill="#333" text-anchor="middle" dominant-baseline="middle">1</text>
+  <line x1="100.0" y1="242.14" x2="100.0" y2="249.76" stroke="#555" stroke-width="1.5"/>
+  <text x="100.0" y="229.26" font-size="10.0" font-family="monospace" fill="#333" text-anchor="middle" dominant-baseline="middle">2</text>
+  <text x="125.99600000000001" y="233.8" font-size="14.0" font-family="monospace" fill="black" text-anchor="start" dominant-baseline="middle">R2</text>
+  <text x="125.99600000000001" y="293.8" font-size="11.0" font-family="monospace" fill="#555" text-anchor="start" dominant-baseline="middle">10K</text>
+  <polygon points="393.904,174.76 406.096,174.76 406.096,205.24 393.904,205.24 393.904,174.76" stroke="#333" stroke-width="0.254" fill="none"/>
+  <line x1="400.0" y1="212.86" x2="400.0" y2="205.24" stroke="#555" stroke-width="1.5"/>
+  <text x="400.0" y="225.74" font-size="10.0" font-family="monospace" fill="#333" text-anchor="middle" dominant-baseline="middle">1</text>
+  <line x1="400.0" y1="167.14" x2="400.0" y2="174.76" stroke="#555" stroke-width="1.5"/>
+  <text x="400.0" y="154.26" font-size="10.0" font-family="monospace" fill="#333" text-anchor="middle" dominant-baseline="middle">2</text>
+  <text x="425.996" y="158.8" font-size="14.0" font-family="monospace" fill="black" text-anchor="start" dominant-baseline="middle">R3</text>
+  <text x="425.996" y="218.8" font-size="11.0" font-family="monospace" fill="#555" text-anchor="start" dominant-baseline="middle">10K</text>
+  <polygon points="228.904,354.76 241.096,354.76 241.096,385.24 228.904,385.24 228.904,354.76" stroke="#333" stroke-width="0.254" fill="none"/>
+  <line x1="235.0" y1="392.86" x2="235.0" y2="385.24" stroke="#555" stroke-width="1.5"/>
+  <text x="235.0" y="405.74" font-size="10.0" font-family="monospace" fill="#333" text-anchor="middle" dominant-baseline="middle">1</text>
+  <line x1="235.0" y1="347.14" x2="235.0" y2="354.76" stroke="#555" stroke-width="1.5"/>
+  <text x="235.0" y="334.26" font-size="10.0" font-family="monospace" fill="#333" text-anchor="middle" dominant-baseline="middle">2</text>
+  <text x="260.996" y="338.8" font-size="14.0" font-family="monospace" fill="black" text-anchor="start" dominant-baseline="middle">R4</text>
+  <text x="260.996" y="398.8" font-size="11.0" font-family="monospace" fill="#555" text-anchor="start" dominant-baseline="middle">10K</text>
+  <polygon points="498.904,354.76 511.096,354.76 511.096,385.24 498.904,385.24 498.904,354.76" stroke="#333" stroke-width="0.254" fill="none"/>
+  <line x1="505.0" y1="392.86" x2="505.0" y2="385.24" stroke="#555" stroke-width="1.5"/>
+  <text x="505.0" y="405.74" font-size="10.0" font-family="monospace" fill="#333" text-anchor="middle" dominant-baseline="middle">1</text>
+  <line x1="505.0" y1="347.14" x2="505.0" y2="354.76" stroke="#555" stroke-width="1.5"/>
+  <text x="505.0" y="334.26" font-size="10.0" font-family="monospace" fill="#333" text-anchor="middle" dominant-baseline="middle">2</text>
+  <text x="530.996" y="338.8" font-size="14.0" font-family="monospace" fill="black" text-anchor="start" dominant-baseline="middle">R5</text>
+  <text x="530.996" y="398.8" font-size="11.0" font-family="monospace" fill="#555" text-anchor="start" dominant-baseline="middle">10K</text>
+  <line x1="219.76" y1="174.76" x2="219.76" y2="153.4636" stroke="#1565c0" stroke-width="1.8"/>
+  <line x1="219.76" y1="153.4636" x2="520.24" y2="153.4636" stroke="#1565c0" stroke-width="1.8"/>
+  <line x1="520.24" y1="153.4636" x2="520.24" y2="174.76" stroke="#1565c0" stroke-width="1.8"/>
+  <line x1="250.24" y1="174.76" x2="277.48" y2="174.76" stroke="#1565c0" stroke-width="1.8"/>
+  <line x1="277.48" y1="174.76" x2="277.48" y2="153.4636" stroke="#1565c0" stroke-width="1.8"/>
+  <line x1="277.48" y1="153.4636" x2="250.24" y2="153.4636" stroke="#1565c0" stroke-width="1.8"/>
+  <line x1="250.24" y1="153.4636" x2="400.0" y2="153.4636" stroke="#1565c0" stroke-width="1.8"/>
+  <line x1="400.0" y1="153.4636" x2="381.904" y2="153.4636" stroke="#1565c0" stroke-width="1.8"/>
+  <line x1="381.904" y1="153.4636" x2="381.904" y2="205.24" stroke="#1565c0" stroke-width="1.8"/>
+  <line x1="381.904" y1="205.24" x2="400.0" y2="205.24" stroke="#1565c0" stroke-width="1.8"/>
+  <line x1="235.0" y1="354.76" x2="235.0" y2="335.14" stroke="#1565c0" stroke-width="1.8"/>
+  <line x1="235.0" y1="335.14" x2="505.0" y2="335.14" stroke="#1565c0" stroke-width="1.8"/>
+  <line x1="505.0" y1="335.14" x2="505.0" y2="354.76" stroke="#1565c0" stroke-width="1.8"/>
+  <line x1="543.28" y1="174.76" x2="543.28" y2="385.24" stroke="#1565c0" stroke-width="1.8"/>
+  <line x1="459.28" y1="190.0" x2="459.28" y2="147.52" stroke="#1565c0" stroke-width="1.8"/>
+  <line x1="459.28" y1="147.52" x2="543.28" y2="147.52" stroke="#1565c0" stroke-width="1.8"/>
+  <line x1="543.28" y1="147.52" x2="543.28" y2="190.0" stroke="#1565c0" stroke-width="1.8"/>
+  <line x1="400.0" y1="174.76" x2="400.0" y2="147.52" stroke="#1565c0" stroke-width="1.8"/>
+  <line x1="400.0" y1="147.52" x2="543.28" y2="147.52" stroke="#1565c0" stroke-width="1.8"/>
+  <line x1="543.28" y1="147.52" x2="543.28" y2="174.76" stroke="#1565c0" stroke-width="1.8"/>
+  <line x1="505.0" y1="385.24" x2="505.0" y2="404.86" stroke="#1565c0" stroke-width="1.8"/>
+  <line x1="505.0" y1="404.86" x2="543.28" y2="404.86" stroke="#1565c0" stroke-width="1.8"/>
+  <line x1="543.28" y1="404.86" x2="543.28" y2="385.24" stroke="#1565c0" stroke-width="1.8"/>
+  <circle cx="543.28" cy="190.0" r="3.0" stroke="#1565c0" stroke-width="0" fill="#1565c0"/>
+  <line x1="187.0" y1="99.76" x2="187.0" y2="385.24" stroke="#1565c0" stroke-width="1.8"/>
+  <line x1="235.0" y1="235.72" x2="235.0" y2="247.72" stroke="#1565c0" stroke-width="1.8"/>
+  <line x1="235.0" y1="247.72" x2="187.0" y2="247.72" stroke="#1565c0" stroke-width="1.8"/>
+  <line x1="187.0" y1="247.72" x2="187.0" y2="235.72" stroke="#1565c0" stroke-width="1.8"/>
+  <line x1="100.0" y1="99.76" x2="100.0" y2="80.14" stroke="#1565c0" stroke-width="1.8"/>
+  <line x1="100.0" y1="80.14" x2="187.0" y2="80.14" stroke="#1565c0" stroke-width="1.8"/>
+  <line x1="187.0" y1="80.14" x2="187.0" y2="99.76" stroke="#1565c0" stroke-width="1.8"/>
+  <line x1="100.0" y1="249.76" x2="100.0" y2="230.14" stroke="#1565c0" stroke-width="1.8"/>
+  <line x1="100.0" y1="230.14" x2="187.0" y2="230.14" stroke="#1565c0" stroke-width="1.8"/>
+  <line x1="187.0" y1="230.14" x2="187.0" y2="249.76" stroke="#1565c0" stroke-width="1.8"/>
+  <line x1="235.0" y1="385.24" x2="235.0" y2="404.86" stroke="#1565c0" stroke-width="1.8"/>
+  <line x1="235.0" y1="404.86" x2="187.0" y2="404.86" stroke="#1565c0" stroke-width="1.8"/>
+  <line x1="187.0" y1="404.86" x2="187.0" y2="385.24" stroke="#1565c0" stroke-width="1.8"/>
+  <circle cx="187.0" cy="235.72" r="3.0" stroke="#1565c0" stroke-width="0" fill="#1565c0"/>
+  <circle cx="187.0" cy="249.76" r="3.0" stroke="#1565c0" stroke-width="0" fill="#1565c0"/>
+  <rect x="-25.1" y="115.2" width="62.0" height="30.0" fill="white" opacity="0.85"/>
+  <line x1="100.0" y1="130.24" x2="34.903999999999996" y2="130.24" stroke="#1565c0" stroke-width="1.6"/>
+  <path d="M -17.1 121.2 L 18.9 121.2 L 34.9 130.2 L 18.9 139.2 L -17.1 139.2 Z" fill="#ffffff" stroke="#1565c0" stroke-width="1.6"/>
+  <text x="5.9" y="130.2" font-size="12.0" fill="#1565c0" text-anchor="middle" dominant-baseline="middle" font-style="italic">A</text>
+  <rect x="-25.1" y="265.2" width="62.0" height="30.0" fill="white" opacity="0.85"/>
+  <line x1="100.0" y1="280.24" x2="34.903999999999996" y2="280.24" stroke="#1565c0" stroke-width="1.6"/>
+  <path d="M -17.1 271.2 L 18.9 271.2 L 34.9 280.2 L 18.9 289.2 L -17.1 289.2 Z" fill="#ffffff" stroke="#1565c0" stroke-width="1.6"/>
+  <text x="5.9" y="280.2" font-size="12.0" fill="#1565c0" text-anchor="middle" dominant-baseline="middle" font-style="italic">B</text>
+  <rect x="-25.1" y="159.8" width="62.0" height="30.0" fill="white" opacity="0.85"/>
+  <line x1="219.76" y1="174.76" x2="34.903999999999996" y2="174.76" stroke="#1565c0" stroke-width="1.6"/>
+  <path d="M -17.1 165.8 L 18.9 165.8 L 34.9 174.8 L 18.9 183.8 L -17.1 183.8 Z" fill="#ffffff" stroke="#1565c0" stroke-width="1.6"/>
+  <text x="5.9" y="174.8" font-size="12.0" fill="#1565c0" text-anchor="middle" dominant-baseline="middle" font-style="italic">VCC</text>
+  <rect x="586.5" y="159.8" width="62.0" height="30.0" fill="white" opacity="0.85"/>
+  <line x1="520.24" y1="174.76" x2="588.5364" y2="174.76" stroke="#1565c0" stroke-width="1.6"/>
+  <path d="M 640.5 165.8 L 604.5 165.8 L 588.5 174.8 L 604.5 183.8 L 640.5 183.8 Z" fill="#ffffff" stroke="#1565c0" stroke-width="1.6"/>
+  <text x="617.5" y="174.8" font-size="12.0" fill="#1565c0" text-anchor="middle" dominant-baseline="middle" font-style="italic">VCC</text>
+  <rect x="109.9" y="355.8" width="62.0" height="30.0" fill="white" opacity="0.85"/>
+  <line x1="235.0" y1="370.76" x2="169.904" y2="370.76" stroke="#1565c0" stroke-width="1.6"/>
+  <path d="M 117.9 361.8 L 153.9 361.8 L 169.9 370.8 L 153.9 379.8 L 117.9 379.8 Z" fill="#ffffff" stroke="#1565c0" stroke-width="1.6"/>
+  <text x="140.9" y="370.8" font-size="12.0" fill="#1565c0" text-anchor="middle" dominant-baseline="middle" font-style="italic">GND</text>
+  <rect x="379.9" y="339.8" width="62.0" height="30.0" fill="white" opacity="0.85"/>
+  <line x1="505.0" y1="354.76" x2="439.904" y2="354.76" stroke="#1565c0" stroke-width="1.6"/>
+  <path d="M 387.9 345.8 L 423.9 345.8 L 439.9 354.8 L 423.9 363.8 L 387.9 363.8 Z" fill="#ffffff" stroke="#1565c0" stroke-width="1.6"/>
+  <text x="410.9" y="354.8" font-size="12.0" fill="#1565c0" text-anchor="middle" dominant-baseline="middle" font-style="italic">GND</text>
+  <rect x="586.5" y="190.2" width="80.1" height="30.0" fill="white" opacity="0.85"/>
+  <line x1="520.24" y1="205.24" x2="588.5364" y2="205.24" stroke="#1565c0" stroke-width="1.6"/>
+  <path d="M 658.6 196.2 L 604.5 196.2 L 588.5 205.2 L 604.5 214.2 L 658.6 214.2 Z" fill="#ffffff" stroke="#1565c0" stroke-width="1.6"/>
+  <text x="626.6" y="205.2" font-size="12.0" fill="#1565c0" text-anchor="middle" dominant-baseline="middle" font-style="italic">A_AND_B</text>
 </svg>

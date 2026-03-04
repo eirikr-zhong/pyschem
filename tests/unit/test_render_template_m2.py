@@ -18,6 +18,7 @@ M2-BG-01    Custom background colour appears in SVG
 M2-BG-02    Default background is #ffffff
 M2-PAGE-01  Template page dimensions are reflected in SVG width/height attrs
 M2-PAGE-02  Explicit page= overrides template.page
+M2-CANVAS-01  canvas_scale scales exported SVG width/height
 M2-COMPAT-01  No template → same SVG structure as before (smoke test)
 M2-COMPAT-02  RenderTemplate.default() produces identical output to no-template
 M2-API-01   Schematic.get_svg_string(template=...) accepted
@@ -248,6 +249,30 @@ class TestM2PageFromTemplate:
         svg = sch.get_svg_string(template=tmpl, page=override_page)
         assert f'width="{override_page.width}"' in svg
         assert f'height="{override_page.height}"' in svg
+
+
+# ===========================================================================
+# M2-CANVAS — Output scaling
+# ===========================================================================
+
+
+class TestM2CanvasScale:
+    def test_M2_CANVAS_01_canvas_scale_scales_output_dimensions(self):
+        """M2-CANVAS-01: canvas_scale multiplies exported SVG width/height."""
+        import re
+
+        sch = _simple_sch()
+        page = PageConfig(width=800, height=600)
+        style = RenderStyle.default().merge(RenderStyle(canvas_scale=2.0))
+        tmpl = RenderTemplate.from_style(style, page=page)
+        svg = sch.get_svg_string(template=tmpl)
+
+        m = re.search(r'<svg[^>]*width="([^"]+)"[^>]*height="([^"]+)"', svg)
+        assert m is not None
+        width = float(m.group(1))
+        height = float(m.group(2))
+        assert width == page.width * 2.0
+        assert height == page.height * 2.0
 
 
 # ===========================================================================
