@@ -12,6 +12,10 @@ from lib.symbols import (
     configure_default_symbols,
     get_default_symbols,
 )
+from lib.symbols.symbol_parser import (
+    SymbolLibrary,
+    load_library as load_symbol_library,
+)
 from lib.core import (
     BoxStyle,
     DefaultPlacementStyle,
@@ -89,4 +93,6 @@ __all__ = [
     "PinDefinition",
     "configure_default_symbols",
     "get_default_symbols",
+    "SymbolLibrary",
+    "load_symbol_library",
 ]
