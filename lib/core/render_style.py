@@ -225,6 +225,32 @@ class PinStyle:
 
 
 # ---------------------------------------------------------------------------
+# SymbolStyle
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class SymbolStyle:
+    """Visual scaling controls for resolved library symbols.
+
+    Attributes:
+        scale: Global geometric scale factor for symbol primitives/pins.
+               ``1.0`` keeps KiCad-native size; values > 1 enlarge symbols.
+    """
+
+    scale: Optional[float] = None
+
+    @classmethod
+    def default(cls) -> "SymbolStyle":
+        """Return a fully-specified default symbol style."""
+        return cls(scale=1.0)
+
+    def merge(self, override: "SymbolStyle") -> "SymbolStyle":
+        """Return a new :class:`SymbolStyle` with *override* fields applied."""
+        return SymbolStyle(**_merge_fields(self, override))
+
+
+# ---------------------------------------------------------------------------
 # NetLabelStyle
 # ---------------------------------------------------------------------------
 
@@ -284,7 +310,7 @@ class NetLabelStyle:
 class RenderStyle:
     """Aggregate visual style for a full schematic render.
 
-    Sub-styles (``wire``, ``label_net``, ``halo``, ``box``, ``pin``) are
+    Sub-styles (``wire``, ``label_net``, ``halo``, ``box``, ``pin``, ``symbol``) are
     optional; when ``None`` the renderer uses the corresponding ``*.default()``
     values.
 
@@ -294,6 +320,7 @@ class RenderStyle:
         halo:            Net-label halo rectangle style.
         box:             Generic component box outline style.
         pin:             Pin stub and annotation style.
+        symbol:          Library symbol rendering controls (e.g. scale).
         background:      SVG canvas background colour.
         ref_font_size:   Font size for component reference designators.
         value_font_size: Font size for component value text.
@@ -306,6 +333,7 @@ class RenderStyle:
     halo: Optional[HaloStyle] = None
     box: Optional[BoxStyle] = None
     pin: Optional[PinStyle] = None
+    symbol: Optional[SymbolStyle] = None
     background: Optional[str] = None
     ref_font_size: Optional[float] = None
     value_font_size: Optional[float] = None
@@ -321,6 +349,7 @@ class RenderStyle:
             halo=HaloStyle.default(),
             box=BoxStyle.default(),
             pin=PinStyle.default(),
+            symbol=SymbolStyle.default(),
             background="#ffffff",
             ref_font_size=14.0,
             value_font_size=11.0,
@@ -340,6 +369,7 @@ class RenderStyle:
             "halo": HaloStyle.default,
             "box": BoxStyle.default,
             "pin": PinStyle.default,
+            "symbol": SymbolStyle.default,
         }
 
         merged_subs: dict = {}

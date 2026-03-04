@@ -7,7 +7,7 @@ import dataclasses
 
 import pytest
 
-from lib.core.render_style import NetLabelStyle, RenderStyle, WireStyle
+from lib.core.render_style import NetLabelStyle, RenderStyle, SymbolStyle, WireStyle
 
 
 # ---------------------------------------------------------------------------
@@ -144,12 +144,15 @@ class TestRenderStyle:
         assert rs.pin_font_size == 10.0
         assert isinstance(rs.wire, WireStyle)
         assert isinstance(rs.label_net, NetLabelStyle)
+        assert isinstance(rs.symbol, SymbolStyle)
+        assert rs.symbol.scale == 1.0
 
     def test_RS14_blank_has_none_sub_styles(self):
         """RS-14: RenderStyle() without args has None wire and label_net."""
         rs = RenderStyle()
         assert rs.wire is None
         assert rs.label_net is None
+        assert rs.symbol is None
         assert rs.background is None
 
     def test_RS15_merge_scalar_field(self):
@@ -216,6 +219,13 @@ class TestRenderStyle:
         assert merged.wire.color == "#aaaaaa"    # from layer1
         assert merged.wire.width == 3.0           # from layer2
         assert merged.background == "#111111"    # from layer1
+
+    def test_RS22b_merge_symbol_sub_style(self):
+        """RS-22b: RenderStyle.merge() recursively merges SymbolStyle."""
+        base = RenderStyle.default()
+        override = RenderStyle(symbol=SymbolStyle(scale=1.8))
+        merged = base.merge(override)
+        assert merged.symbol.scale == 1.8
 
     def test_RS23_default_has_no_none_fields_anywhere(self):
         """RS-23: RenderStyle.default() tree has no None field values."""

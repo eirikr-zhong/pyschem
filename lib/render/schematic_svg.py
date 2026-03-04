@@ -402,6 +402,10 @@ def render_schematic_svg(
     pin_key_fill: str = _style_value(pin_style.key_fill, field_name="pin.key_fill")
     pin_value_fill: str = _style_value(pin_style.value_fill, field_name="pin.value_fill")
 
+    symbol_scale = 1.0
+    if effective_style.symbol is not None and effective_style.symbol.scale is not None:
+        symbol_scale = max(0.1, float(effective_style.symbol.scale))
+
     symbol_renderer = SymbolRenderer(
         primitive_stroke=box_stroke,
         primitive_stroke_width=box_stroke_width,
@@ -409,6 +413,7 @@ def render_schematic_svg(
         pin_stub_width=pin_stub_stroke_width,
         pin_text_fill=pin_key_fill,
         value_text_fill=pin_value_fill,
+        symbol_scale=symbol_scale,
     )
 
     background: str = _style_value(effective_style.background, field_name="background")

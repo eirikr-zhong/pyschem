@@ -23,6 +23,7 @@ from lib.core import (
     Part,
     Pin,
     PinStyle,
+    SymbolStyle,
     RenderStyle,
     RenderTemplate,
     Schematic,
@@ -62,6 +63,7 @@ __all__ = [
     "HaloStyle",
     "BoxStyle",
     "PinStyle",
+    "SymbolStyle",
     "RenderStyle",
     "RenderTemplate",
     # Connection API

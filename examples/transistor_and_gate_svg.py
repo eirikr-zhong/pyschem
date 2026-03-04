@@ -27,6 +27,7 @@ from pyschem import (
     RenderStyle,
     RenderTemplate,
     Schematic,
+    SymbolStyle,
     WireStyle,
     configure_default_symbols,
     connect,
@@ -105,6 +106,7 @@ render_template = RenderTemplate.from_style(
     RenderStyle(
         wire=WireStyle(color=wire_color),
         label_net=NetLabelStyle(color=wire_color),
+        symbol=SymbolStyle(scale=1.8),
     )
 )
 sch.export_svg(svg_path, template=render_template)
