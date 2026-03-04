@@ -6,19 +6,19 @@ from pyschem import NetLabel, Part, Pin, Schematic, Sheet, Style
 from lib.symbols.data import PinDefinition, SymbolData
 
 
-# ── 基础对象 fixture ──────────────────────────────────────────────────────────
+# ── Basic object fixtures ─────────────────────────────────────────────────────
 
 @pytest.fixture
 def bare_part() -> Part:
-    """最简 Part，无引脚，用于实例化断言。"""
+    """Minimal Part with no pins — used for instantiation assertions."""
     return Part("Device:R", ref="R1", value="10k")
 
 
 @pytest.fixture
 def simple_part() -> Part:
-    """带两个引脚的 Part，覆盖 pin 访问测试。"""
+    """Part with two pins — covers pin access tests."""
     p = Part("Device:R", ref="R1", value="10k")
-    # 访问引脚会惰性创建
+    # Accessing pins triggers lazy creation
     p.pin("1")
     p.pin("2")
     return p
@@ -26,7 +26,7 @@ def simple_part() -> Part:
 
 @pytest.fixture
 def styled_part(simple_part: Part) -> Part:
-    """已设置定位 Style 的 Part。"""
+    """Part with an explicit Style set."""
     simple_part.set_style(
         Style(
             x=40.0,
@@ -41,7 +41,7 @@ def styled_part(simple_part: Part) -> Part:
 
 @pytest.fixture
 def two_device_schematic() -> Schematic:
-    """分压器场景：R1、R2，三条网络，用于渲染/回归测试。"""
+    """Voltage divider: R1, R2, three nets — used for render/regression tests."""
     sch = Schematic("divider")
     r1 = Part("Device:R", ref="R1", value="10k")
     r2 = Part("Device:R", ref="R2", value="5k")
@@ -63,63 +63,63 @@ def two_device_schematic() -> Schematic:
     return sch
 
 
-# ── 路径 fixture ─────────────────────────────────────────────────────────────
+# ── Path fixtures ─────────────────────────────────────────────────────────────
 
 @pytest.fixture
 def temp_output_dir(tmp_path):
-    """临时输出目录，测试结束自动清理。"""
+    """Temporary output directory — auto-cleaned after test."""
     out = tmp_path / "output"
-    # 故意不 mkdir，验证 export 自动创建目录
+    # Intentionally not mkdir'd — verifies that export creates the directory
     return out
 
 
 @pytest.fixture
 def mock_symbol_dir(tmp_path):
-    """构造最小虚拟符号目录，用于 symbols 单元测试（不依赖真实 KiCad 库）。"""
+    """Minimal fake symbol directory for symbols unit tests (no real KiCad libs needed)."""
     lib_dir = tmp_path / "kicad_sym"
     lib_dir.mkdir()
     # Write minimal legal .kicad_sym content
     content = '''(kicad_symbol_lib
-	(version 20211014)
-	(generator "pyschem_test")
-	(symbol "R"
-		(pin_names (offset 0))
-		(in_bom yes)
-		(on_board yes)
-		(property "Reference" "R"
-			(at 0 0 0)
-			(effects (font (size 1.27 1.27))))
-		(property "Value" "R"
-			(at 0 0 0)
-			(effects (font (size 1.27 1.27))))
-		(property "Footprint" "Device_R_SMD"
-			(at 0 0 0)
-			(effects (font (size 1.27 1.27)) (hide yes)))
-		(property "Description" "Resistor"
-			(at 0 0 0)
-			(effects (font (size 1.27 1.27)) (hide yes)))
-		(symbol "R_0_1"
-			(rectangle (at -1.27 -2.54) (extent 2.54 5.08)
-				(stroke (width 0.254) (type default))
-				(fill (type background))))
-		(symbol "R_1_1"
-			(pin passive line (at -2.54 0 180) (length 2.54)
-				(name "~" (effects (font (size 1.27 1.27))))
-				(number "1" (effects (font (size 1.27 1.27)))))
-			(pin passive line (at 2.54 0 0) (length 2.54)
-				(name "~" (effects (font (size 1.27 1.27))))
-				(number "2" (effects (font (size 1.27 1.27))))))
-	)
+\t(version 20211014)
+\t(generator "pyschem_test")
+\t(symbol "R"
+\t\t(pin_names (offset 0))
+\t\t(in_bom yes)
+\t\t(on_board yes)
+\t\t(property "Reference" "R"
+\t\t\t(at 0 0 0)
+\t\t\t(effects (font (size 1.27 1.27))))
+\t\t(property "Value" "R"
+\t\t\t(at 0 0 0)
+\t\t\t(effects (font (size 1.27 1.27))))
+\t\t(property "Footprint" "Device_R_SMD"
+\t\t\t(at 0 0 0)
+\t\t\t(effects (font (size 1.27 1.27)) (hide yes)))
+\t\t(property "Description" "Resistor"
+\t\t\t(at 0 0 0)
+\t\t\t(effects (font (size 1.27 1.27)) (hide yes)))
+\t\t(symbol "R_0_1"
+\t\t\t(rectangle (at -1.27 -2.54) (extent 2.54 5.08)
+\t\t\t\t(stroke (width 0.254) (type default))
+\t\t\t\t(fill (type background))))
+\t\t(symbol "R_1_1"
+\t\t\t(pin passive line (at -2.54 0 180) (length 2.54)
+\t\t\t\t(name "~" (effects (font (size 1.27 1.27))))
+\t\t\t\t(number "1" (effects (font (size 1.27 1.27)))))
+\t\t\t(pin passive line (at 2.54 0 0) (length 2.54)
+\t\t\t\t(name "~" (effects (font (size 1.27 1.27))))
+\t\t\t\t(number "2" (effects (font (size 1.27 1.27))))))
+\t)
 )'''
     (lib_dir / "Device.kicad_sym").write_text(content)
     return str(lib_dir)
 
 
-# ── 布局 fixture ─────────────────────────────────────────────────────────────
+# ── Layout fixtures ───────────────────────────────────────────────────────────
 
 @pytest.fixture
 def bjt_symbol_data() -> SymbolData:
-    """虚拟 NPN BJT SymbolData，包含 B/C/E 命名引脚（编号 1/2/3）。"""
+    """Fake NPN BJT SymbolData with B/C/E named pins (numbered 1/2/3)."""
     return SymbolData(
         name="Q_NPN_BCE",
         lib="Device",
@@ -133,7 +133,7 @@ def bjt_symbol_data() -> SymbolData:
 
 @pytest.fixture
 def bjt_part(bjt_symbol_data: SymbolData) -> Part:
-    """绑定了 BJT SymbolData 的 Part，可用 pin('B')/'C'/'E' 引用引脚。"""
+    """Part with BJT SymbolData attached — supports pin('B')/'C'/'E' access."""
     part = Part("Device:Q_NPN_BCE", ref="Q1")
     part.attach_symbol(bjt_symbol_data)
     return part
@@ -141,7 +141,7 @@ def bjt_part(bjt_symbol_data: SymbolData) -> Part:
 
 @pytest.fixture
 def locked_part() -> Part:
-    """已锁定位置的器件。"""
+    """Part with a locked position."""
     p = Part("Device:R", ref="U1")
     p.set_style(Style(x=0.0, y=0.0, locked=True))
     return p
@@ -149,15 +149,14 @@ def locked_part() -> Part:
 
 @pytest.fixture
 def unlocked_part() -> Part:
-    """未锁定位置的器件，布局器应自动注入默认值。"""
+    """Part with no Style set — layout engine should inject defaults."""
     p = Part("Device:R", ref="U2")
-    # 不设置 Style
     return p
 
 
 @pytest.fixture
 def overlapping_locked_parts() -> list:
-    """两个固定在同一坐标的器件，触发 LayoutConstraintError。"""
+    """Two parts locked at the same coordinates — triggers LayoutConstraintError."""
     a = Part("Device:R", ref="P1")
     a.set_style(Style(x=10.0, y=10.0, locked=True))
     b = Part("Device:C", ref="P2")
