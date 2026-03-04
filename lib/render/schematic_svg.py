@@ -77,6 +77,13 @@ Canvas / page size
 The canvas dimensions come from a :class:`~lib.core.page.PageConfig` passed
 in by the caller.  When no ``PageConfig`` is provided the renderer uses
 **A1 portrait** (1684 × 2384 px at 96 dpi) as the default.
+
+Canvas output scaling
+---------------------
+Final SVG ``width``/``height`` are multiplied by an effective output scale.
+In ``fixed`` mode this uses ``RenderStyle.canvas_scale``.  In ``auto`` mode
+the renderer derives a scale from style font sizes and a readability target,
+then clamps to configured min/max bounds.
 """
 
 from __future__ import annotations
@@ -146,6 +153,51 @@ def _style_value(value: _T | None, *, field_name: str) -> _T:
     if value is None:
         raise ValueError(f"RenderStyle.default() produced None for {field_name}")
     return value
+
+
+def _clamp(value: float, lower: float, upper: float) -> float:
+    return max(lower, min(upper, value))
+
+
+def _effective_output_scale(
+    style: RenderStyle,
+    *,
+    font_ref: float,
+    font_net: float,
+    font_value: float,
+    font_pin: float,
+    ln_font_size: float,
+) -> float:
+    """Resolve final output scale from RenderStyle fixed/auto settings."""
+    mode_raw = (_style_value(style.canvas_scale_mode, field_name="canvas_scale_mode") or "auto")
+    mode = mode_raw.strip().lower()
+    if mode not in {"fixed", "auto"}:
+        mode = "auto"
+
+    scale_min = float(_style_value(style.canvas_scale_min, field_name="canvas_scale_min"))
+    scale_max = float(_style_value(style.canvas_scale_max, field_name="canvas_scale_max"))
+    if scale_min > scale_max:
+        scale_min, scale_max = scale_max, scale_min
+    scale_min = max(0.1, scale_min)
+    scale_max = max(scale_min, scale_max)
+
+    if mode == "fixed":
+        raw_scale = float(_style_value(style.canvas_scale, field_name="canvas_scale"))
+    else:
+        target_font_px = max(
+            0.1,
+            float(
+                _style_value(
+                    style.canvas_target_min_font_px,
+                    field_name="canvas_target_min_font_px",
+                )
+            ),
+        )
+        # Conservative baseline: smallest effective text size should meet target.
+        baseline_font_px = max(0.1, min(font_net, font_ref, font_value, font_pin, ln_font_size))
+        raw_scale = target_font_px / baseline_font_px
+
+    return _clamp(raw_scale, scale_min, scale_max)
 
 
 # ---------------------------------------------------------------------------
@@ -405,9 +457,6 @@ def render_schematic_svg(
     symbol_scale = 1.0
     if effective_style.symbol is not None and effective_style.symbol.scale is not None:
         symbol_scale = max(0.1, float(effective_style.symbol.scale))
-    canvas_scale = 1.0
-    if effective_style.canvas_scale is not None:
-        canvas_scale = max(0.1, float(effective_style.canvas_scale))
 
     symbol_renderer = SymbolRenderer(
         primitive_stroke=box_stroke,
@@ -432,6 +481,14 @@ def render_schematic_svg(
     font_pin: float = _style_value(
         pin_style.font_pin if pin_style.font_pin is not None else effective_style.pin_font_size,
         field_name="pin_font_size",
+    )
+    output_scale = _effective_output_scale(
+        effective_style,
+        font_ref=font_ref,
+        font_net=font_net,
+        font_value=font_value,
+        font_pin=font_pin,
+        ln_font_size=ln_font_size,
     )
 
     # Resolve canvas dimensions — explicit page > template.page > legacy w/h > default
@@ -740,7 +797,7 @@ def render_schematic_svg(
             )
 
     # --- Phase 5: apply fit-to-content viewBox -----------------------------
-    return canvas.to_svg_fit(margin=_MARGIN, output_scale=canvas_scale)
+    return canvas.to_svg_fit(margin=_MARGIN, output_scale=output_scale)
 
 
 # ---------------------------------------------------------------------------

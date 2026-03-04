@@ -10,7 +10,7 @@ WIRE-05  Junction dot rendered when 3+ pins share a trunk point
 
 FIT-01   viewBox attribute present and differs from "0 0 <w> <h>" when content drawn
 FIT-02   viewBox encodes a content-centred region (vb_x < 0 for typical layout)
-FIT-03   width/height attributes on <svg> element still reflect page dimensions
+FIT-03   width/height attributes on <svg> include adaptive output scaling
 FIT-04   Empty schematic falls back gracefully (viewBox still present)
 
 READ-01  Ref label font-size >= 14
@@ -42,7 +42,7 @@ import pytest
 
 from lib.core.connect import connect
 from lib.core.part import NetLabel, Part
-from lib.core.render_style import BoxStyle
+from lib.core.render_style import BoxStyle, RenderStyle
 from lib.core.style import Style
 from lib.render.schematic_svg import (
     _Obstacle,
@@ -117,6 +117,25 @@ def _extract_viewbox(svg: str) -> tuple[float, float, float, float]:
     parts = m.group(1).split()
     assert len(parts) == 4, f"viewBox has {len(parts)} parts, expected 4"
     return tuple(float(p) for p in parts)  # type: ignore[return-value]
+
+
+def _extract_svg_dims(svg: str) -> tuple[float, float]:
+    m = re.search(r'<svg[^>]*width="([^"]+)"[^>]*height="([^"]+)"', svg)
+    assert m, "No width/height attributes found in SVG root"
+    return float(m.group(1)), float(m.group(2))
+
+
+def _default_auto_scale() -> float:
+    style = RenderStyle.default()
+    baseline = min(
+        style.ref_font_size,
+        style.net_font_size,
+        style.value_font_size,
+        style.pin_font_size,
+        style.label_net.font_size,
+    )
+    raw = style.canvas_target_min_font_px / baseline
+    return max(style.canvas_scale_min, min(style.canvas_scale_max, raw))
 
 
 def _extract_font_sizes(svg: str) -> list[float]:
@@ -254,14 +273,16 @@ class TestFitToContent:
         )
 
     def test_svg_width_height_reflect_page_size(self):
-        """FIT-03: width/height attrs on <svg> still reflect page dimensions."""
+        """FIT-03: width/height attrs on <svg> include adaptive output scaling."""
         page = PageConfig(width=800, height=600)
         sch = Schematic("page_dims")
         r1 = Part("Device:R", ref="R1")
         sch.add_part(r1)
         svg = sch.get_svg_string(page=page)
-        assert 'width="800"' in svg, "SVG width should match page width"
-        assert 'height="600"' in svg, "SVG height should match page height"
+        width, height = _extract_svg_dims(svg)
+        scale = _default_auto_scale()
+        assert width == pytest.approx(page.width * scale)
+        assert height == pytest.approx(page.height * scale)
 
     def test_empty_schematic_has_viewbox(self):
         """FIT-04: empty schematic still produces valid SVG with viewBox."""

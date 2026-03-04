@@ -114,15 +114,18 @@ connect(q2.pin("C"), nl_a_and_b.label_pin)
 
 svg_path = "out/transistor_and_gate.svg"
 wire_color = "#1565c0"
-canvas_scale = 2.0
+page = PageConfig.a1(landscape=True)
 render_template = RenderTemplate.from_style(
     RenderStyle(
         wire=WireStyle(color=wire_color),
         label_net=NetLabelStyle(color=wire_color),
         symbol=SymbolStyle(scale=6.0),
-        canvas_scale=canvas_scale,
+        canvas_scale_mode="auto",
+        canvas_scale_min=1.0,
+        canvas_scale_max=6.0,
+        canvas_target_min_font_px=12.0,
     ),
-    page=PageConfig.a1(landscape=True),
+    page=page,
 )
 sch.export_svg(svg_path, template=render_template)
 
@@ -130,10 +133,12 @@ sch.export_svg(svg_path, template=render_template)
 svg_file = Path(svg_path)
 content = svg_file.read_text(encoding="utf-8")
 m = re.search(r'viewBox="([^"]+)"', content)
-if m:
+size = re.search(r'<svg[^>]*width="([^"]+)"[^>]*height="([^"]+)"', content)
+if m and size:
     _, _, vb_w, vb_h = [float(x) for x in m.group(1).split()]
-    content = re.sub(r'width="[^"]+"', f'width="{vb_w * canvas_scale:.1f}"', content, count=1)
-    content = re.sub(r'height="[^"]+"', f'height="{vb_h * canvas_scale:.1f}"', content, count=1)
+    output_scale = max(float(size.group(1)) / page.width, float(size.group(2)) / page.height)
+    content = re.sub(r'width="[^"]+"', f'width="{vb_w * output_scale:.1f}"', content, count=1)
+    content = re.sub(r'height="[^"]+"', f'height="{vb_h * output_scale:.1f}"', content, count=1)
     svg_file.write_text(content, encoding="utf-8")
 
 print(svg_path)

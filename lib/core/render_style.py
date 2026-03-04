@@ -321,9 +321,18 @@ class RenderStyle:
         box:             Generic component box outline style.
         pin:             Pin stub and annotation style.
         symbol:          Library symbol rendering controls (e.g. scale).
-        canvas_scale:    Overall output scaling factor applied at SVG export
-                         time (width/height pixel density). ``1.0`` keeps
-                         legacy behaviour; values > 1 improve readability.
+        canvas_scale_mode:
+                         Output canvas scaling mode.
+                         ``"fixed"`` uses ``canvas_scale`` directly.
+                         ``"auto"`` derives scale from font readability target.
+        canvas_scale:    Overall output scaling factor used in ``"fixed"``
+                         mode at SVG export time (width/height pixel density).
+        canvas_scale_min:
+                         Minimum allowed output scale (applies to both modes).
+        canvas_scale_max:
+                         Maximum allowed output scale (applies to both modes).
+        canvas_target_min_font_px:
+                         Readability target in pixels for ``"auto"`` mode.
         background:      SVG canvas background colour.
         ref_font_size:   Font size for component reference designators.
         value_font_size: Font size for component value text.
@@ -337,7 +346,11 @@ class RenderStyle:
     box: Optional[BoxStyle] = None
     pin: Optional[PinStyle] = None
     symbol: Optional[SymbolStyle] = None
+    canvas_scale_mode: Optional[str] = None
     canvas_scale: Optional[float] = None
+    canvas_scale_min: Optional[float] = None
+    canvas_scale_max: Optional[float] = None
+    canvas_target_min_font_px: Optional[float] = None
     background: Optional[str] = None
     ref_font_size: Optional[float] = None
     value_font_size: Optional[float] = None
@@ -354,7 +367,11 @@ class RenderStyle:
             box=BoxStyle.default(),
             pin=PinStyle.default(),
             symbol=SymbolStyle.default(),
+            canvas_scale_mode="auto",
             canvas_scale=1.0,
+            canvas_scale_min=1.0,
+            canvas_scale_max=6.0,
+            canvas_target_min_font_px=12.0,
             background="#ffffff",
             ref_font_size=14.0,
             value_font_size=11.0,
@@ -395,6 +412,10 @@ class RenderStyle:
             )
             for name in scalar_names
         }
+        if override.canvas_scale is not None and override.canvas_scale_mode is None:
+            # Backward compatibility: historical usage set only canvas_scale and
+            # expected fixed-width/height output scaling.
+            scalars["canvas_scale_mode"] = "fixed"
 
         return RenderStyle(**merged_subs, **scalars)
 

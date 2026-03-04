@@ -29,6 +29,7 @@ import lib.symbols.symbols as _sym_mod
 from lib.core.part import NetLabel
 from lib.core.part import Part
 from lib.core.page import PageConfig
+from lib.core.render_style import RenderStyle
 from lib.core.schematic import Schematic
 from lib.core.style import Style
 from lib.symbols import configure_default_symbols
@@ -52,6 +53,25 @@ def _extract_viewbox(svg: str) -> tuple[float, float, float, float]:
     assert m, "No viewBox in SVG"
     parts = m.group(1).split()
     return tuple(float(p) for p in parts)  # type: ignore[return-value]
+
+
+def _extract_svg_dims(svg: str) -> tuple[float, float]:
+    m = re.search(r'<svg[^>]*width="([^"]+)"[^>]*height="([^"]+)"', svg)
+    assert m, "No width/height on SVG root"
+    return float(m.group(1)), float(m.group(2))
+
+
+def _default_auto_scale() -> float:
+    style = RenderStyle.default()
+    baseline = min(
+        style.ref_font_size,
+        style.net_font_size,
+        style.value_font_size,
+        style.pin_font_size,
+        style.label_net.font_size,
+    )
+    raw = style.canvas_target_min_font_px / baseline
+    return max(style.canvas_scale_min, min(style.canvas_scale_max, raw))
 
 
 def _extract_polylines(svg: str) -> list[str]:
@@ -305,11 +325,13 @@ class TestCompat:
         assert "</svg>" in svg
 
     def test_page_dimensions_preserved(self):
-        """COMPAT-04: custom page dimensions are still reflected in width/height attrs."""
+        """COMPAT-04: custom page dimensions are reflected with adaptive scaling."""
         page = PageConfig(width=1200, height=900)
         sch = Schematic("compat_page")
         r1 = Part("Device:R", ref="R1")
         sch.add_part(r1)
         svg = sch.get_svg_string(page=page)
-        assert 'width="1200"' in svg
-        assert 'height="900"' in svg
+        width, height = _extract_svg_dims(svg)
+        scale = _default_auto_scale()
+        assert width == pytest.approx(page.width * scale)
+        assert height == pytest.approx(page.height * scale)

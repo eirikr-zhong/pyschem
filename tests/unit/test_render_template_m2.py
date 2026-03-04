@@ -32,7 +32,13 @@ import pytest
 
 from lib.core.page import PageConfig
 from lib.core.part import Part, NetLabel
-from lib.core.render_style import NetLabelStyle, RenderStyle, RenderTemplate, WireStyle
+from lib.core.render_style import (
+    NetLabelStyle,
+    PinStyle,
+    RenderStyle,
+    RenderTemplate,
+    WireStyle,
+)
 from lib.core.schematic import Schematic
 from lib.symbols.data import PinDefinition, SymbolData
 
@@ -72,6 +78,14 @@ def _labelnet_sch() -> Schematic:
 def _custom_wire_tmpl(color: str = "#ff0000", width: float = 3.0) -> RenderTemplate:
     style = RenderStyle(wire=WireStyle(color=color, width=width))
     return RenderTemplate.from_style(RenderStyle.default().merge(style))
+
+
+def _svg_dims(svg: str) -> tuple[float, float]:
+    import re
+
+    m = re.search(r'<svg[^>]*width="([^"]+)"[^>]*height="([^"]+)"', svg)
+    assert m is not None
+    return float(m.group(1)), float(m.group(2))
 
 
 # ===========================================================================
@@ -235,7 +249,10 @@ class TestM2PageFromTemplate:
         """M2-PAGE-01: Template.page dimensions appear as SVG width/height."""
         sch = _simple_sch()
         page = PageConfig.a4()
-        tmpl = RenderTemplate(style=RenderStyle.default(), page=page)
+        style = RenderStyle.default().merge(
+            RenderStyle(canvas_scale_mode="fixed", canvas_scale=1.0)
+        )
+        tmpl = RenderTemplate(style=style, page=page)
         svg = sch.get_svg_string(template=tmpl)
         assert f'width="{page.width}"' in svg
         assert f'height="{page.height}"' in svg
@@ -245,7 +262,10 @@ class TestM2PageFromTemplate:
         sch = _simple_sch()
         tmpl_page = PageConfig.a4()
         override_page = PageConfig.a3(landscape=True)
-        tmpl = RenderTemplate(style=RenderStyle.default(), page=tmpl_page)
+        style = RenderStyle.default().merge(
+            RenderStyle(canvas_scale_mode="fixed", canvas_scale=1.0)
+        )
+        tmpl = RenderTemplate(style=style, page=tmpl_page)
         svg = sch.get_svg_string(template=tmpl, page=override_page)
         assert f'width="{override_page.width}"' in svg
         assert f'height="{override_page.height}"' in svg
@@ -259,20 +279,91 @@ class TestM2PageFromTemplate:
 class TestM2CanvasScale:
     def test_M2_CANVAS_01_canvas_scale_scales_output_dimensions(self):
         """M2-CANVAS-01: canvas_scale multiplies exported SVG width/height."""
-        import re
-
         sch = _simple_sch()
         page = PageConfig(width=800, height=600)
         style = RenderStyle.default().merge(RenderStyle(canvas_scale=2.0))
         tmpl = RenderTemplate.from_style(style, page=page)
         svg = sch.get_svg_string(template=tmpl)
-
-        m = re.search(r'<svg[^>]*width="([^"]+)"[^>]*height="([^"]+)"', svg)
-        assert m is not None
-        width = float(m.group(1))
-        height = float(m.group(2))
+        width, height = _svg_dims(svg)
         assert width == page.width * 2.0
         assert height == page.height * 2.0
+
+    def test_M2_CANVAS_02_fixed_mode_clamps_to_min_max(self):
+        """M2-CANVAS-02: fixed mode scale is clamped to canvas_scale_min/max."""
+        sch = _simple_sch()
+        page = PageConfig(width=800, height=600)
+        style = RenderStyle.default().merge(
+            RenderStyle(
+                canvas_scale_mode="fixed",
+                canvas_scale=20.0,
+                canvas_scale_min=1.0,
+                canvas_scale_max=3.0,
+            )
+        )
+        svg = sch.get_svg_string(template=RenderTemplate.from_style(style, page=page))
+        width, height = _svg_dims(svg)
+        assert width == page.width * 3.0
+        assert height == page.height * 3.0
+
+    def test_M2_CANVAS_03_auto_mode_increases_scale_for_small_fonts(self):
+        """M2-CANVAS-03: auto mode picks scale > 1.0 when effective fonts are small."""
+        sch = _simple_sch()
+        page = PageConfig(width=800, height=600)
+        style = RenderStyle.default().merge(
+            RenderStyle(
+                canvas_scale_mode="auto",
+                canvas_scale_min=1.0,
+                canvas_scale_max=6.0,
+                canvas_target_min_font_px=12.0,
+                net_font_size=8.0,
+                label_net=NetLabelStyle(font_size=8.0),
+                pin=PinStyle(font_ref=8.0, font_value=8.0, font_pin=8.0),
+            )
+        )
+        svg = sch.get_svg_string(template=RenderTemplate.from_style(style, page=page))
+        width, height = _svg_dims(svg)
+        assert width == pytest.approx(page.width * 1.5)
+        assert height == pytest.approx(page.height * 1.5)
+        assert width > page.width
+
+    def test_M2_CANVAS_04_auto_mode_respects_min_and_max_clamp(self):
+        """M2-CANVAS-04: auto mode clamps scale when raw value is out of bounds."""
+        sch = _simple_sch()
+        page = PageConfig(width=1000, height=700)
+
+        # Raw scale=12/60=0.2 -> clamp to min=1.3
+        style_min = RenderStyle.default().merge(
+            RenderStyle(
+                canvas_scale_mode="auto",
+                canvas_scale_min=1.3,
+                canvas_scale_max=4.0,
+                canvas_target_min_font_px=12.0,
+                net_font_size=60.0,
+                label_net=NetLabelStyle(font_size=60.0),
+                pin=PinStyle(font_ref=60.0, font_value=60.0, font_pin=60.0),
+            )
+        )
+        svg_min = sch.get_svg_string(template=RenderTemplate.from_style(style_min, page=page))
+        min_w, min_h = _svg_dims(svg_min)
+        assert min_w == pytest.approx(page.width * 1.3)
+        assert min_h == pytest.approx(page.height * 1.3)
+
+        # Raw scale=24/4=6.0 -> clamp to max=2.2
+        style_max = RenderStyle.default().merge(
+            RenderStyle(
+                canvas_scale_mode="auto",
+                canvas_scale_min=1.0,
+                canvas_scale_max=2.2,
+                canvas_target_min_font_px=24.0,
+                net_font_size=4.0,
+                label_net=NetLabelStyle(font_size=4.0),
+                pin=PinStyle(font_ref=4.0, font_value=4.0, font_pin=4.0),
+            )
+        )
+        svg_max = sch.get_svg_string(template=RenderTemplate.from_style(style_max, page=page))
+        max_w, max_h = _svg_dims(svg_max)
+        assert max_w == pytest.approx(page.width * 2.2)
+        assert max_h == pytest.approx(page.height * 2.2)
 
 
 # ===========================================================================
