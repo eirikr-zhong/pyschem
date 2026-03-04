@@ -15,8 +15,8 @@
   <text x="250.24" y="240.98000000000002" font-size="10.0" font-family="monospace" fill="#333" text-anchor="middle" dominant-baseline="middle">C</text>
   <line x1="250.24" y1="174.76" x2="250.24" y2="159.52" stroke="#555" stroke-width="1.5"/>
   <text x="250.24" y="139.01999999999998" font-size="10.0" font-family="monospace" fill="#333" text-anchor="middle" dominant-baseline="middle">E</text>
-  <text x="279.4364" y="158.8" font-size="14.0" font-family="monospace" fill="black" text-anchor="start" dominant-baseline="middle">Q1</text>
   </g>
+  <text x="235.0" y="161.4636" font-size="14.0" font-family="monospace" fill="black" text-anchor="middle" dominant-baseline="middle">Q1</text>
   <polyline points="489.76,190.0 508.81,190.0" stroke="#333" stroke-width="1.8" fill="none"/>
   <polyline points="508.81,201.43 508.81,178.57" stroke="#333" stroke-width="0.508" fill="none"/>
   <polyline points="508.81,193.81 520.24,205.24" stroke="#333" stroke-width="1.8" fill="none"/>
@@ -29,42 +29,42 @@
   <text x="520.24" y="240.98000000000002" font-size="10.0" font-family="monospace" fill="#333" text-anchor="middle" dominant-baseline="middle">C</text>
   <line x1="520.24" y1="174.76" x2="520.24" y2="159.52" stroke="#555" stroke-width="1.5"/>
   <text x="520.24" y="139.01999999999998" font-size="10.0" font-family="monospace" fill="#333" text-anchor="middle" dominant-baseline="middle">E</text>
-  <text x="549.4363999999999" y="158.8" font-size="14.0" font-family="monospace" fill="black" text-anchor="start" dominant-baseline="middle">Q2</text>
+  <text x="533.5364" y="190.0" font-size="14.0" font-family="monospace" fill="black" text-anchor="start" dominant-baseline="middle">Q2</text>
   <polygon points="93.904,99.76 106.096,99.76 106.096,130.24 93.904,130.24 93.904,99.76" stroke="#333" stroke-width="0.254" fill="none"/>
   <line x1="100.0" y1="130.24" x2="100.0" y2="137.86" stroke="#555" stroke-width="1.5"/>
   <text x="100.0" y="158.36" font-size="10.0" font-family="monospace" fill="#333" text-anchor="middle" dominant-baseline="middle">1</text>
   <line x1="100.0" y1="99.76" x2="100.0" y2="92.14" stroke="#555" stroke-width="1.5"/>
   <text x="100.0" y="71.64" font-size="10.0" font-family="monospace" fill="#333" text-anchor="middle" dominant-baseline="middle">2</text>
-  <text x="125.99600000000001" y="83.8" font-size="14.0" font-family="monospace" fill="black" text-anchor="start" dominant-baseline="middle">R1</text>
-  <text x="125.99600000000001" y="143.8" font-size="11.0" font-family="monospace" fill="#555" text-anchor="start" dominant-baseline="middle">10K</text>
+  <text x="110.096" y="115.0" font-size="14.0" font-family="monospace" fill="black" text-anchor="start" dominant-baseline="middle">R1</text>
+  <text x="100.0" y="143.86" font-size="11.0" font-family="monospace" fill="#555" text-anchor="middle" dominant-baseline="middle">10K</text>
   <polygon points="93.904,249.76 106.096,249.76 106.096,280.24 93.904,280.24 93.904,249.76" stroke="#333" stroke-width="0.254" fill="none"/>
   <line x1="100.0" y1="280.24" x2="100.0" y2="287.86" stroke="#555" stroke-width="1.5"/>
   <text x="100.0" y="308.36" font-size="10.0" font-family="monospace" fill="#333" text-anchor="middle" dominant-baseline="middle">1</text>
   <line x1="100.0" y1="249.76" x2="100.0" y2="242.14" stroke="#555" stroke-width="1.5"/>
   <text x="100.0" y="221.64" font-size="10.0" font-family="monospace" fill="#333" text-anchor="middle" dominant-baseline="middle">2</text>
-  <text x="125.99600000000001" y="233.8" font-size="14.0" font-family="monospace" fill="black" text-anchor="start" dominant-baseline="middle">R2</text>
-  <text x="125.99600000000001" y="293.8" font-size="11.0" font-family="monospace" fill="#555" text-anchor="start" dominant-baseline="middle">10K</text>
+  <text x="110.096" y="265.0" font-size="14.0" font-family="monospace" fill="black" text-anchor="start" dominant-baseline="middle">R2</text>
+  <text x="100.0" y="293.86" font-size="11.0" font-family="monospace" fill="#555" text-anchor="middle" dominant-baseline="middle">10K</text>
   <polygon points="393.904,174.76 406.096,174.76 406.096,205.24 393.904,205.24 393.904,174.76" stroke="#333" stroke-width="0.254" fill="none"/>
   <line x1="400.0" y1="205.24" x2="400.0" y2="212.86" stroke="#555" stroke-width="1.5"/>
   <text x="400.0" y="233.36" font-size="10.0" font-family="monospace" fill="#333" text-anchor="middle" dominant-baseline="middle">1</text>
   <line x1="400.0" y1="174.76" x2="400.0" y2="167.14" stroke="#555" stroke-width="1.5"/>
   <text x="400.0" y="146.64" font-size="10.0" font-family="monospace" fill="#333" text-anchor="middle" dominant-baseline="middle">2</text>
-  <text x="425.996" y="158.8" font-size="14.0" font-family="monospace" fill="black" text-anchor="start" dominant-baseline="middle">R3</text>
-  <text x="425.996" y="218.8" font-size="11.0" font-family="monospace" fill="#555" text-anchor="start" dominant-baseline="middle">10K</text>
+  <text x="410.096" y="190.0" font-size="14.0" font-family="monospace" fill="black" text-anchor="start" dominant-baseline="middle">R3</text>
+  <text x="400.0" y="218.86" font-size="11.0" font-family="monospace" fill="#555" text-anchor="middle" dominant-baseline="middle">10K</text>
   <polygon points="228.904,354.76 241.096,354.76 241.096,385.24 228.904,385.24 228.904,354.76" stroke="#333" stroke-width="0.254" fill="none"/>
   <line x1="235.0" y1="385.24" x2="235.0" y2="392.86" stroke="#555" stroke-width="1.5"/>
   <text x="235.0" y="413.36" font-size="10.0" font-family="monospace" fill="#333" text-anchor="middle" dominant-baseline="middle">1</text>
   <line x1="235.0" y1="354.76" x2="235.0" y2="347.14" stroke="#555" stroke-width="1.5"/>
   <text x="235.0" y="326.64" font-size="10.0" font-family="monospace" fill="#333" text-anchor="middle" dominant-baseline="middle">2</text>
-  <text x="260.996" y="338.8" font-size="14.0" font-family="monospace" fill="black" text-anchor="start" dominant-baseline="middle">R4</text>
-  <text x="260.996" y="398.8" font-size="11.0" font-family="monospace" fill="#555" text-anchor="start" dominant-baseline="middle">10K</text>
+  <text x="245.096" y="370.0" font-size="14.0" font-family="monospace" fill="black" text-anchor="start" dominant-baseline="middle">R4</text>
+  <text x="235.0" y="398.86" font-size="11.0" font-family="monospace" fill="#555" text-anchor="middle" dominant-baseline="middle">10K</text>
   <polygon points="498.904,354.76 511.096,354.76 511.096,385.24 498.904,385.24 498.904,354.76" stroke="#333" stroke-width="0.254" fill="none"/>
   <line x1="505.0" y1="385.24" x2="505.0" y2="392.86" stroke="#555" stroke-width="1.5"/>
   <text x="505.0" y="413.36" font-size="10.0" font-family="monospace" fill="#333" text-anchor="middle" dominant-baseline="middle">1</text>
   <line x1="505.0" y1="354.76" x2="505.0" y2="347.14" stroke="#555" stroke-width="1.5"/>
   <text x="505.0" y="326.64" font-size="10.0" font-family="monospace" fill="#333" text-anchor="middle" dominant-baseline="middle">2</text>
-  <text x="530.996" y="338.8" font-size="14.0" font-family="monospace" fill="black" text-anchor="start" dominant-baseline="middle">R5</text>
-  <text x="530.996" y="398.8" font-size="11.0" font-family="monospace" fill="#555" text-anchor="start" dominant-baseline="middle">10K</text>
+  <text x="515.096" y="370.0" font-size="14.0" font-family="monospace" fill="black" text-anchor="start" dominant-baseline="middle">R5</text>
+  <text x="505.0" y="398.86" font-size="11.0" font-family="monospace" fill="#555" text-anchor="middle" dominant-baseline="middle">10K</text>
   <line x1="204.52" y1="174.76" x2="192.52" y2="174.76" stroke="#1565c0" stroke-width="1.8"/>
   <line x1="192.52" y1="174.76" x2="192.52" y2="153.4636" stroke="#1565c0" stroke-width="1.8"/>
   <line x1="192.52" y1="153.4636" x2="204.52" y2="153.4636" stroke="#1565c0" stroke-width="1.8"/>

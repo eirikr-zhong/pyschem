@@ -6,6 +6,7 @@ import pytest
 
 import lib.symbols.symbols as _sym_mod
 from lib.core.part import Part
+from lib.core.render_style import RenderStyle, RenderTemplate, TextPlacementStyle
 from lib.core.schematic import Schematic
 from lib.symbols import configure_default_symbols
 
@@ -58,6 +59,23 @@ class TestMissingSymbolPlaceholder:
 
         svg = sch.get_svg_string()
         assert "? CustomLib:Foo" in svg
+
+    def test_visibility_toggle_suppresses_placeholder_ref_and_value(self):
+        sch = Schematic("missing_symbol_hidden_text")
+        p = Part("CustomLib:Foo", ref="X1", value="10k")
+        p.pin("1")
+        sch.add_part(p)
+        style = RenderStyle.default().merge(
+            RenderStyle(
+                ref_text=TextPlacementStyle(visible=False),
+                value_text=TextPlacementStyle(visible=False),
+            )
+        )
+        tmpl = RenderTemplate.from_style(style)
+        svg = sch.get_svg_string(template=tmpl)
+        assert "? CustomLib:Foo" in svg
+        assert ">X1<" not in svg
+        assert ">10k<" not in svg
 
 
 class TestLibrarySymbolResolution:

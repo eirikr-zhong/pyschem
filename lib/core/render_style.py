@@ -1,9 +1,8 @@
 """Render style and template data classes for schematic SVG export.
 
 This module defines the data structures for controlling the visual appearance
-of the schematic SVG output.  All hardcoded visual constants in the renderer
-have corresponding fields here; ``RenderTemplate.default()`` reproduces the
-original hard-coded defaults exactly.
+of the schematic SVG output.  All visual defaults in the renderer have
+corresponding fields here.
 
 Hierarchy
 ---------
@@ -251,6 +250,59 @@ class SymbolStyle:
 
 
 # ---------------------------------------------------------------------------
+# TextPlacementStyle
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class TextPlacementStyle:
+    """Placement controls for component reference/value text labels.
+
+    Attributes:
+        position:
+            Label location around the component body.
+            One of ``"top"``, ``"bottom"``, ``"left"``, ``"right"``, ``"center"``.
+        offset:
+            Radial distance from the chosen body side in SVG units (px).
+        visible:
+            Whether this text label is rendered.
+        rotation_mode:
+            Placement frame under part rotation:
+            ``"component"`` follows component rotation;
+            ``"screen"`` stays fixed to screen axes.
+    """
+
+    position: Optional[str] = None
+    offset: Optional[float] = None
+    visible: Optional[bool] = None
+    rotation_mode: Optional[str] = None
+
+    @classmethod
+    def default_ref(cls) -> "TextPlacementStyle":
+        """Default placement for component reference text."""
+        return cls(
+            position="right",
+            offset=4.0,
+            visible=True,
+            rotation_mode="component",
+        )
+
+    @classmethod
+    def default_value(cls) -> "TextPlacementStyle":
+        """Default placement for component value text."""
+        return cls(
+            position="bottom",
+            offset=6.0,
+            visible=True,
+            rotation_mode="component",
+        )
+
+    def merge(self, override: "TextPlacementStyle") -> "TextPlacementStyle":
+        """Return a new :class:`TextPlacementStyle` with *override* fields applied."""
+        return TextPlacementStyle(**_merge_fields(self, override))
+
+
+# ---------------------------------------------------------------------------
 # NetLabelStyle
 # ---------------------------------------------------------------------------
 
@@ -310,7 +362,8 @@ class NetLabelStyle:
 class RenderStyle:
     """Aggregate visual style for a full schematic render.
 
-    Sub-styles (``wire``, ``label_net``, ``halo``, ``box``, ``pin``, ``symbol``) are
+    Sub-styles (``wire``, ``label_net``, ``halo``, ``box``, ``pin``, ``symbol``,
+    ``ref_text``, ``value_text``) are
     optional; when ``None`` the renderer uses the corresponding ``*.default()``
     values.
 
@@ -321,6 +374,8 @@ class RenderStyle:
         box:             Generic component box outline style.
         pin:             Pin stub and annotation style.
         symbol:          Library symbol rendering controls (e.g. scale).
+        ref_text:        Placement controls for reference text labels.
+        value_text:      Placement controls for value text labels.
         canvas_scale_mode:
                          Output canvas scaling mode.
                          ``"fixed"`` uses ``canvas_scale`` directly.
@@ -346,6 +401,8 @@ class RenderStyle:
     box: Optional[BoxStyle] = None
     pin: Optional[PinStyle] = None
     symbol: Optional[SymbolStyle] = None
+    ref_text: Optional[TextPlacementStyle] = None
+    value_text: Optional[TextPlacementStyle] = None
     canvas_scale_mode: Optional[str] = None
     canvas_scale: Optional[float] = None
     canvas_scale_min: Optional[float] = None
@@ -367,6 +424,8 @@ class RenderStyle:
             box=BoxStyle.default(),
             pin=PinStyle.default(),
             symbol=SymbolStyle.default(),
+            ref_text=TextPlacementStyle.default_ref(),
+            value_text=TextPlacementStyle.default_value(),
             canvas_scale_mode="auto",
             canvas_scale=1.0,
             canvas_scale_min=1.0,
@@ -392,6 +451,8 @@ class RenderStyle:
             "box": BoxStyle.default,
             "pin": PinStyle.default,
             "symbol": SymbolStyle.default,
+            "ref_text": TextPlacementStyle.default_ref,
+            "value_text": TextPlacementStyle.default_value,
         }
 
         merged_subs: dict = {}

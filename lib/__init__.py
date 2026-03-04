@@ -24,6 +24,7 @@ from lib.core import (
     Pin,
     PinStyle,
     SymbolStyle,
+    TextPlacementStyle,
     RenderStyle,
     RenderTemplate,
     Schematic,
@@ -64,6 +65,7 @@ __all__ = [
     "BoxStyle",
     "PinStyle",
     "SymbolStyle",
+    "TextPlacementStyle",
     "RenderStyle",
     "RenderTemplate",
     # Connection API

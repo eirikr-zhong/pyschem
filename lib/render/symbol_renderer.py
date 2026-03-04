@@ -8,9 +8,10 @@ symbol-specific branches.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from lib.core.render_style import TextPlacementStyle
 from lib.render.svg_renderer import SvgCanvas
 from lib.symbols import get_default_symbols
 from lib.symbols.data import PinDefinition, SymbolData, SymbolPrimitive
@@ -28,6 +29,8 @@ class _DrawStyle:
     pin_text_fill: str = "#333"
     value_text_fill: str = "#555"
     symbol_scale: float = 1.0
+    ref_text: TextPlacementStyle = field(default_factory=TextPlacementStyle.default_ref)
+    value_text: TextPlacementStyle = field(default_factory=TextPlacementStyle.default_value)
 
 
 class SymbolRenderer:
@@ -43,7 +46,11 @@ class SymbolRenderer:
         pin_text_fill: str = "#333",
         value_text_fill: str = "#555",
         symbol_scale: float = 1.0,
+        ref_text_style: TextPlacementStyle | None = None,
+        value_text_style: TextPlacementStyle | None = None,
     ) -> None:
+        ref_default = TextPlacementStyle.default_ref()
+        value_default = TextPlacementStyle.default_value()
         self._style = _DrawStyle(
             primitive_stroke=primitive_stroke,
             primitive_stroke_width=primitive_stroke_width,
@@ -52,6 +59,16 @@ class SymbolRenderer:
             pin_text_fill=pin_text_fill,
             value_text_fill=value_text_fill,
             symbol_scale=max(0.1, float(symbol_scale)),
+            ref_text=(
+                ref_default.merge(ref_text_style)
+                if ref_text_style is not None
+                else ref_default
+            ),
+            value_text=(
+                value_default.merge(value_text_style)
+                if value_text_style is not None
+                else value_default
+            ),
         )
 
     # ------------------------------------------------------------------
@@ -82,7 +99,8 @@ class SymbolRenderer:
         if not symbol.primitives and not symbol.pins:
             return False
 
-        if rotation % 360:
+        rotation_norm = rotation % 360
+        if rotation_norm:
             canvas.group_start(f"rotate({-rotation},{cx:.3f},{cy:.3f})")
 
         for primitive in symbol.primitives:
@@ -91,38 +109,48 @@ class SymbolRenderer:
         for pin in symbol.pins:
             self._draw_pin_stub_and_label(canvas, pin, cx, cy, font_pin=font_pin)
 
-        _, _, max_x, _ = self._symbol_body_bbox(symbol) or (-20.0, -20.0, 20.0, 20.0)
+        bbox = self._symbol_body_bbox(symbol) or (-20.0, -20.0, 20.0, 20.0)
         ref = part.ref or ""
         value = part.value or ""
-        ref_x, ref_y, value_x, value_y = self._ref_value_positions(
-            cx,
-            cy,
-            max_x=max_x,
-            font_ref=font_ref,
-            font_value=font_value,
-        )
-        if ref:
+
+        if rotation_norm:
+            canvas.group_end()
+
+        if ref and self.text_visible(self._style.ref_text, TextPlacementStyle.default_ref()):
+            ref_x, ref_y, ref_anchor = self.text_position(
+                cx=cx,
+                cy=cy,
+                bbox=bbox,
+                placement=self._style.ref_text,
+                default_placement=TextPlacementStyle.default_ref(),
+                rotation=rotation,
+            )
             canvas.text(
                 ref_x,
                 ref_y,
                 ref,
                 font_size=font_ref,
-                anchor="start",
+                anchor=ref_anchor,
                 dominant_baseline="middle",
             )
-        if value:
+        if value and self.text_visible(self._style.value_text, TextPlacementStyle.default_value()):
+            value_x, value_y, value_anchor = self.text_position(
+                cx=cx,
+                cy=cy,
+                bbox=bbox,
+                placement=self._style.value_text,
+                default_placement=TextPlacementStyle.default_value(),
+                rotation=rotation,
+            )
             canvas.text(
                 value_x,
                 value_y,
                 value,
                 font_size=font_value,
                 fill=self._style.value_text_fill,
-                anchor="start",
+                anchor=value_anchor,
                 dominant_baseline="middle",
             )
-
-        if rotation % 360:
-            canvas.group_end()
 
         return True
 
@@ -349,26 +377,107 @@ class SymbolRenderer:
             anchor = "middle"
         return (tx, ty, anchor)
 
-    def _ref_value_positions(
-        self,
+    @staticmethod
+    def _normalized_position(
+        position: str | None,
+        *,
+        fallback: str,
+    ) -> str:
+        raw = (fallback if position is None else position).strip().lower()
+        if raw in {"top", "bottom", "left", "right", "center"}:
+            return raw
+        return fallback
+
+    @staticmethod
+    def _normalized_rotation_mode(
+        mode: str | None,
+        *,
+        fallback: str,
+    ) -> str:
+        raw = (fallback if mode is None else mode).strip().lower()
+        if raw in {"component", "screen"}:
+            return raw
+        return fallback
+
+    @staticmethod
+    def _resolved_offset(
+        offset: float | None,
+        *,
+        fallback: float,
+    ) -> float:
+        return fallback if offset is None else float(offset)
+
+    @staticmethod
+    def text_visible(placement: TextPlacementStyle, default_placement: TextPlacementStyle) -> bool:
+        if placement.visible is None:
+            return bool(default_placement.visible)
+        return bool(placement.visible)
+
+    @classmethod
+    def text_position(
+        cls,
+        *,
         cx: float,
         cy: float,
-        *,
-        max_x: float,
-        font_ref: float,
-        font_value: float,
-    ) -> tuple[float, float, float, float]:
-        """Return world-space positions for reference and value texts."""
-        scale = max(1.0, self._style.symbol_scale)
-        x_offset = max(4.0, font_ref * 0.35 + (scale - 1.0) * 3.0)
-        y_offset_ref = max(8.0, font_ref * 0.8 + (scale - 1.0) * 4.0)
-        y_offset_value = max(8.0, font_value * 0.8 + (scale - 1.0) * 4.0)
-        x = cx + max_x + x_offset
-        return (x, cy - y_offset_ref, x, cy + y_offset_value)
+        bbox: tuple[float, float, float, float],
+        placement: TextPlacementStyle,
+        default_placement: TextPlacementStyle,
+        rotation: int = 0,
+    ) -> tuple[float, float, str]:
+        """Return world-space ``(x, y, anchor)`` for a text placement style."""
+        fallback_position = cls._normalized_position(default_placement.position, fallback="right")
+        fallback_mode = cls._normalized_rotation_mode(
+            default_placement.rotation_mode,
+            fallback="component",
+        )
+        fallback_offset = float(default_placement.offset if default_placement.offset is not None else 0.0)
+
+        position = cls._normalized_position(placement.position, fallback=fallback_position)
+        mode = cls._normalized_rotation_mode(placement.rotation_mode, fallback=fallback_mode)
+        offset = cls._resolved_offset(placement.offset, fallback=fallback_offset)
+
+        x0, y0, x1, y1 = bbox
+        mid_x = (x0 + x1) / 2.0
+        mid_y = (y0 + y1) / 2.0
+        if position == "top":
+            lx, ly = mid_x, y0 - offset
+            dx, dy = 0.0, -1.0
+        elif position == "bottom":
+            lx, ly = mid_x, y1 + offset
+            dx, dy = 0.0, 1.0
+        elif position == "left":
+            lx, ly = x0 - offset, mid_y
+            dx, dy = -1.0, 0.0
+        elif position == "center":
+            lx, ly = mid_x, mid_y
+            dx, dy = 0.0, 0.0
+        else:
+            lx, ly = x1 + offset, mid_y
+            dx, dy = 1.0, 0.0
+
+        if mode == "component":
+            wx, wy = cls._to_world_point(lx, ly, cx, cy, rotation)
+            wdx, wdy = cls._rotated_vector(dx, dy, rotation=rotation)
+        else:
+            wx, wy = cx + lx, cy + ly
+            wdx, wdy = dx, dy
+
+        if abs(wdx) > abs(wdy):
+            anchor = "start" if wdx > 0 else "end"
+        else:
+            anchor = "middle"
+        return (wx, wy, anchor)
 
     # ------------------------------------------------------------------
     # Geometry helpers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _rotated_vector(dx: float, dy: float, *, rotation: int) -> tuple[float, float]:
+        rad = math.radians(-rotation % 360)
+        c = math.cos(rad)
+        s = math.sin(rad)
+        return (dx * c - dy * s, dx * s + dy * c)
 
     def _symbol_body_bbox(self, symbol: SymbolData) -> tuple[float, float, float, float] | None:
         s = self._style.symbol_scale

@@ -99,6 +99,7 @@ from lib.core.render_style import (
     PinStyle,
     RenderStyle,
     RenderTemplate as _RenderTemplateT,
+    TextPlacementStyle,
     WireStyle,
 )
 from lib.render.svg_renderer import SvgCanvas
@@ -417,6 +418,12 @@ def render_schematic_svg(
     halo_style: HaloStyle = effective_style.halo or _default_halo_style()
     box_style: BoxStyle = effective_style.box or _default_box_style()
     pin_style: PinStyle = effective_style.pin or _default_pin_style()
+    ref_text_style: TextPlacementStyle = (
+        effective_style.ref_text or TextPlacementStyle.default_ref()
+    )
+    value_text_style: TextPlacementStyle = (
+        effective_style.value_text or TextPlacementStyle.default_value()
+    )
 
     # Resolved style scalars — used throughout this function
     wire_color: str = _style_value(wire_style.color, field_name="wire.color")
@@ -466,6 +473,8 @@ def render_schematic_svg(
         pin_text_fill=pin_key_fill,
         value_text_fill=pin_value_fill,
         symbol_scale=symbol_scale,
+        ref_text_style=ref_text_style,
+        value_text_style=value_text_style,
     )
 
     background: str = _style_value(effective_style.background, field_name="background")
@@ -644,10 +653,15 @@ def render_schematic_svg(
                 part,
                 cx,
                 cy,
+                rotation=rotation,
                 font_ref=font_ref,
+                font_value=font_value,
                 box_width=box_width,
                 box_min_height=box_min_height,
                 box_pin_row_height=box_pin_row_height,
+                ref_text_style=ref_text_style,
+                value_text_style=value_text_style,
+                value_text_fill=pin_value_fill,
             )
 
     # Draw wires for each net.
@@ -2030,10 +2044,15 @@ def _render_missing_symbol_placeholder(
     cx: float,
     cy: float,
     *,
+    rotation: int = 0,
     font_ref: float | None = None,
+    font_value: float | None = None,
     box_width: float | None = None,
     box_min_height: float | None = None,
     box_pin_row_height: float | None = None,
+    ref_text_style: TextPlacementStyle | None = None,
+    value_text_style: TextPlacementStyle | None = None,
+    value_text_fill: str | None = None,
 ) -> None:
     """Render a red dashed missing-symbol placeholder.
 
@@ -2047,6 +2066,11 @@ def _render_missing_symbol_placeholder(
         _style_value(default_style.ref_font_size, field_name="ref_font_size")
         if font_ref is None
         else font_ref
+    )
+    font_value = (
+        _style_value(default_style.value_font_size, field_name="value_font_size")
+        if font_value is None
+        else font_value
     )
     box_width = (
         _style_value(default_box.width, field_name="box.width")
@@ -2062,6 +2086,21 @@ def _render_missing_symbol_placeholder(
         box_pin_row_height
         if box_pin_row_height is not None
         else _style_value(default_box.pin_row_height, field_name="box.pin_row_height")
+    )
+    ref_text_style = (
+        TextPlacementStyle.default_ref()
+        if ref_text_style is None
+        else TextPlacementStyle.default_ref().merge(ref_text_style)
+    )
+    value_text_style = (
+        TextPlacementStyle.default_value()
+        if value_text_style is None
+        else TextPlacementStyle.default_value().merge(value_text_style)
+    )
+    value_text_fill = (
+        _style_value(_default_pin_style().value_fill, field_name="pin.value_fill")
+        if value_text_fill is None
+        else value_text_fill
     )
 
     h = _box_height(
@@ -2124,6 +2163,47 @@ def _render_missing_symbol_placeholder(
         anchor="middle",
         dominant_baseline="middle",
     )
+
+    local_bbox = (-w / 2, -h / 2, w / 2, h / 2)
+    ref_text = part.ref or ""
+    value_text = part.value or ""
+
+    if ref_text and SymbolRenderer.text_visible(ref_text_style, TextPlacementStyle.default_ref()):
+        ref_x, ref_y, ref_anchor = SymbolRenderer.text_position(
+            cx=cx,
+            cy=cy,
+            bbox=local_bbox,
+            placement=ref_text_style,
+            default_placement=TextPlacementStyle.default_ref(),
+            rotation=rotation,
+        )
+        canvas.text(
+            ref_x,
+            ref_y,
+            ref_text,
+            font_size=font_ref,
+            anchor=ref_anchor,
+            dominant_baseline="middle",
+        )
+
+    if value_text and SymbolRenderer.text_visible(value_text_style, TextPlacementStyle.default_value()):
+        value_x, value_y, value_anchor = SymbolRenderer.text_position(
+            cx=cx,
+            cy=cy,
+            bbox=local_bbox,
+            placement=value_text_style,
+            default_placement=TextPlacementStyle.default_value(),
+            rotation=rotation,
+        )
+        canvas.text(
+            value_x,
+            value_y,
+            value_text,
+            font_size=font_value,
+            fill=value_text_fill,
+            anchor=value_anchor,
+            dominant_baseline="middle",
+        )
 
 
 # ---------------------------------------------------------------------------

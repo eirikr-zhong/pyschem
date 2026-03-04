@@ -12,6 +12,7 @@ from lib.render.symbol_renderer import SymbolRenderer
 from lib.symbols import configure_default_symbols
 from lib.symbols.data import PinDefinition, SymbolData, SymbolPrimitive
 from lib.core.part import Part
+from lib.core.render_style import TextPlacementStyle
 
 
 # ---------------------------------------------------------------------------
@@ -122,6 +123,84 @@ class TestRenderPartRotation:
         part.value = None
         result = rend.render_part(c, part, 100, 100, symbol_name="TestSym")
         assert result is True  # symbol was used
+
+
+class TestRefValuePlacement:
+    def test_position_options_map_to_expected_coordinates(self):
+        """Configured ref/value positions map to expected text coordinates."""
+        bbox = (-20.0, -10.0, 20.0, 10.0)
+        cx = 100.0
+        cy = 200.0
+        default_ref = TextPlacementStyle.default_ref()
+        offset = 6.0
+
+        expected = {
+            "top": (100.0, 184.0, "middle"),
+            "bottom": (100.0, 216.0, "middle"),
+            "left": (74.0, 200.0, "end"),
+            "right": (126.0, 200.0, "start"),
+            "center": (100.0, 200.0, "middle"),
+        }
+        for pos, (ex, ey, eanchor) in expected.items():
+            x, y, anchor = SymbolRenderer.text_position(
+                cx=cx,
+                cy=cy,
+                bbox=bbox,
+                placement=TextPlacementStyle(position=pos, offset=offset),
+                default_placement=default_ref,
+                rotation=0,
+            )
+            assert x == pytest.approx(ex, rel=1e-6)
+            assert y == pytest.approx(ey, rel=1e-6)
+            assert anchor == eanchor
+
+    def test_component_vs_screen_mode_differs_under_rotation(self):
+        """component mode and screen mode produce different coordinates when rotated."""
+        bbox = (-20.0, -10.0, 20.0, 10.0)
+        cx = 100.0
+        cy = 200.0
+        default_ref = TextPlacementStyle.default_ref()
+
+        comp_x, comp_y, _ = SymbolRenderer.text_position(
+            cx=cx,
+            cy=cy,
+            bbox=bbox,
+            placement=TextPlacementStyle(position="right", offset=4.0, rotation_mode="component"),
+            default_placement=default_ref,
+            rotation=90,
+        )
+        scr_x, scr_y, _ = SymbolRenderer.text_position(
+            cx=cx,
+            cy=cy,
+            bbox=bbox,
+            placement=TextPlacementStyle(position="right", offset=4.0, rotation_mode="screen"),
+            default_placement=default_ref,
+            rotation=90,
+        )
+
+        assert (comp_x, comp_y) == pytest.approx((100.0, 176.0), rel=1e-6)
+        assert (scr_x, scr_y) == pytest.approx((124.0, 200.0), rel=1e-6)
+        assert (comp_x, comp_y) != (scr_x, scr_y)
+
+    def test_visibility_toggle_suppresses_resolved_symbol_text(self):
+        """Visibility toggles suppress ref/value text for resolved symbol rendering."""
+        c = _canvas()
+        sym = _simple_symbol(
+            primitives=[SymbolPrimitive("line", [(-10, 0), (10, 0)])],
+            pins=[PinDefinition("1", "~", "passive", -10, 0, 180, 5)],
+        )
+        part = _make_part_with_symbol(sym)
+        part.value = "10k"
+
+        rend = SymbolRenderer(
+            ref_text_style=TextPlacementStyle(visible=False),
+            value_text_style=TextPlacementStyle(visible=False),
+        )
+        used = rend.render_part(c, part, 100, 100, symbol_name="TestSym")
+        assert used is True
+        svg = c.to_svg()
+        assert ">U1<" not in svg
+        assert ">10k<" not in svg
 
 
 # ---------------------------------------------------------------------------

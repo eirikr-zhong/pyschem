@@ -7,7 +7,13 @@ import dataclasses
 
 import pytest
 
-from lib.core.render_style import NetLabelStyle, RenderStyle, SymbolStyle, WireStyle
+from lib.core.render_style import (
+    NetLabelStyle,
+    RenderStyle,
+    SymbolStyle,
+    TextPlacementStyle,
+    WireStyle,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -150,7 +156,17 @@ class TestRenderStyle:
         assert isinstance(rs.wire, WireStyle)
         assert isinstance(rs.label_net, NetLabelStyle)
         assert isinstance(rs.symbol, SymbolStyle)
+        assert isinstance(rs.ref_text, TextPlacementStyle)
+        assert isinstance(rs.value_text, TextPlacementStyle)
         assert rs.symbol.scale == 1.0
+        assert rs.ref_text.position == "right"
+        assert rs.ref_text.offset == 4.0
+        assert rs.ref_text.visible is True
+        assert rs.ref_text.rotation_mode == "component"
+        assert rs.value_text.position == "bottom"
+        assert rs.value_text.offset == 6.0
+        assert rs.value_text.visible is True
+        assert rs.value_text.rotation_mode == "component"
 
     def test_RS14_blank_has_none_sub_styles(self):
         """RS-14: RenderStyle() without args has None wire and label_net."""
@@ -158,6 +174,8 @@ class TestRenderStyle:
         assert rs.wire is None
         assert rs.label_net is None
         assert rs.symbol is None
+        assert rs.ref_text is None
+        assert rs.value_text is None
         assert rs.canvas_scale_mode is None
         assert rs.canvas_scale is None
         assert rs.canvas_scale_min is None
@@ -236,6 +254,26 @@ class TestRenderStyle:
         override = RenderStyle(symbol=SymbolStyle(scale=1.8))
         merged = base.merge(override)
         assert merged.symbol.scale == 1.8
+
+    def test_RS22c_merge_ref_text_sub_style(self):
+        """RS-22c: RenderStyle.merge() recursively merges ref_text style."""
+        base = RenderStyle.default()
+        override = RenderStyle(ref_text=TextPlacementStyle(position="left", offset=3.0))
+        merged = base.merge(override)
+        assert merged.ref_text.position == "left"
+        assert merged.ref_text.offset == 3.0
+        assert merged.ref_text.visible is True
+        assert merged.ref_text.rotation_mode == "component"
+
+    def test_RS22d_merge_value_text_sub_style(self):
+        """RS-22d: RenderStyle.merge() recursively merges value_text style."""
+        base = RenderStyle.default()
+        override = RenderStyle(value_text=TextPlacementStyle(visible=False, rotation_mode="screen"))
+        merged = base.merge(override)
+        assert merged.value_text.visible is False
+        assert merged.value_text.rotation_mode == "screen"
+        assert merged.value_text.position == "bottom"
+        assert merged.value_text.offset == 6.0
 
     def test_RS23_default_has_no_none_fields_anywhere(self):
         """RS-23: RenderStyle.default() tree has no None field values."""
