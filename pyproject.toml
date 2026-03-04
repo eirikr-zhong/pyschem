@@ -48,12 +48,12 @@ python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "-v --strict-markers --tb=short"
 markers = [
-    "unit: 单元测试，不依赖外部文件或网络",
-    "integration: 集成测试，依赖真实 KiCad 样本文件",
-    "regression: 回归测试，与 golden file 对比",
-    "P0: 阻塞发布的核心用例",
-    "P1: 建议覆盖的扩展用例",
-    "slow: 耗时较长的测试（集成/回归）",
+    "unit: unit tests, no external files or network",
+    "integration: integration tests, depends on real KiCad sample files",
+    "regression: regression tests, compared against golden files",
+    "P0: core cases that block release",
+    "P1: extended cases recommended for coverage",
+    "slow: long-running tests (integration/regression)",
 ]
 
 [tool.coverage.run]
