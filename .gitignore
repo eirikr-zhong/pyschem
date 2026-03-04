@@ -26,3 +26,6 @@ out/*.png
 out/*.jpg
 out/*.jpeg
 out/*.dot
+
+# Local dev tool config
+opencode.json
