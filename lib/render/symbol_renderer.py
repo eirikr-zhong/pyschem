@@ -12,18 +12,11 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from lib.render.svg_renderer import SvgCanvas
+from lib.symbols import get_default_symbols
 from lib.symbols.data import PinDefinition, SymbolData, SymbolPrimitive
 
 if TYPE_CHECKING:
     from lib.core.part import Part
-
-
-_PNP_BODY_HALF = 18.0
-_PNP_BASE_STUB = 12.0
-_PNP_LEAD_LEN = 20.0
-_PNP_LINE_W = 1.8
-_PNP_ARROW_SIZE = 6.0
-_PNP_ARROW_INSET = 5.0
 
 
 @dataclass
@@ -185,47 +178,23 @@ class SymbolRenderer:
 
     def _resolve_symbol_data(self, part: "Part", symbol_name: str) -> SymbolData | None:
         attached: SymbolData | None = getattr(part, "_symbol_data", None)
-        if symbol_name == "Q_PNP_CBE":
-            return self._resolve_pnp_symbol(attached)
         if attached is not None:
             return attached
+        lib_id = getattr(part, "lib_id", "") or ""
+        if ":" not in lib_id:
+            return None
+        lib, name_from_lib_id = lib_id.split(":", 1)
+        if not lib or not name_from_lib_id:
+            return None
+        symbols = get_default_symbols()
+        if symbols is None:
+            return None
+        resolved = symbols.get_symbol(lib, name_from_lib_id)
+        if resolved is not None:
+            return resolved
+        if symbol_name and symbol_name != name_from_lib_id:
+            return symbols.get_symbol(lib, symbol_name)
         return None
-
-    def _resolve_pnp_symbol(self, attached: SymbolData | None) -> SymbolData:
-        base = _builtin_pnp_symbol()
-        if attached is None or not attached.pins:
-            return base
-
-        by_number = {p.number: p for p in base.pins}
-        by_name = {p.name: p for p in base.pins if p.name and p.name != "~"}
-        merged_pins: list[PinDefinition] = []
-        for src in attached.pins:
-            tpl = by_name.get(src.name) or by_number.get(src.number)
-            if tpl is None:
-                merged_pins.append(src)
-                continue
-            merged_pins.append(
-                PinDefinition(
-                    number=src.number,
-                    name=src.name,
-                    type=src.type,
-                    x=tpl.x,
-                    y=tpl.y,
-                    orientation=tpl.orientation,
-                    length=0.0,
-                )
-            )
-
-        merged_props = dict(base.properties)
-        merged_props.update(attached.properties)
-        return SymbolData(
-            name=attached.name or base.name,
-            lib=attached.lib or base.lib,
-            pins=merged_pins,
-            primitives=list(base.primitives),
-            properties=merged_props,
-            bounding_box=base.bounding_box,
-        )
 
     # ------------------------------------------------------------------
     # Primitive rendering
@@ -414,84 +383,3 @@ class SymbolRenderer:
         if mode in {"solid", "outline", "foreground"}:
             return "black"
         return "none"
-
-
-def _builtin_pnp_symbol() -> SymbolData:
-    """Compatibility PNP symbol encoded as unified primitives."""
-    bar_x = -_PNP_BODY_HALF * 0.35
-    col_inner_y = -_PNP_BODY_HALF * 0.5
-    em_inner_y = _PNP_BODY_HALF * 0.5
-    col_top_y = -_PNP_BODY_HALF
-    em_bot_y = _PNP_BODY_HALF
-    col_exit_y = -_PNP_BODY_HALF - _PNP_LEAD_LEN
-    em_exit_y = _PNP_BODY_HALF + _PNP_LEAD_LEN
-    base_x = -_PNP_BODY_HALF - _PNP_BASE_STUB
-
-    arrow = _pnp_arrow_polygon(
-        x1=0.0,
-        y1=em_bot_y,
-        x2=bar_x,
-        y2=em_inner_y,
-        arrow_size=_PNP_ARROW_SIZE,
-        arrow_inset=_PNP_ARROW_INSET,
-    )
-
-    primitives = [
-        SymbolPrimitive(kind="circle", points=[(0.0, 0.0)], radius=_PNP_BODY_HALF, stroke_width=_PNP_LINE_W),
-        SymbolPrimitive(kind="line", points=[(base_x, 0.0), (-_PNP_BODY_HALF, 0.0)], stroke_width=_PNP_LINE_W),
-        SymbolPrimitive(
-            kind="line",
-            points=[(bar_x, -_PNP_BODY_HALF * 0.65), (bar_x, _PNP_BODY_HALF * 0.65)],
-            stroke_width=_PNP_LINE_W * 1.5,
-        ),
-        SymbolPrimitive(kind="line", points=[(bar_x, col_inner_y), (0.0, col_top_y)], stroke_width=_PNP_LINE_W),
-        SymbolPrimitive(kind="line", points=[(0.0, col_top_y), (0.0, col_exit_y)], stroke_width=_PNP_LINE_W),
-        SymbolPrimitive(kind="line", points=[(bar_x, em_inner_y), (0.0, em_bot_y)], stroke_width=_PNP_LINE_W),
-        SymbolPrimitive(kind="line", points=[(0.0, em_bot_y), (0.0, em_exit_y)], stroke_width=_PNP_LINE_W),
-        SymbolPrimitive(kind="polygon", points=arrow, stroke_width=0.5, fill="solid"),
-    ]
-
-    pins = [
-        PinDefinition(number="1", name="C", type="passive", x=0.0, y=col_exit_y, orientation=0, length=0.0),
-        PinDefinition(number="2", name="B", type="input", x=base_x, y=0.0, orientation=180, length=0.0),
-        PinDefinition(number="3", name="E", type="passive", x=0.0, y=em_exit_y, orientation=0, length=0.0),
-    ]
-
-    return SymbolData(
-        name="Q_PNP_CBE",
-        lib="Device",
-        pins=pins,
-        primitives=primitives,
-        properties={"_builtin": "pnp_cbe"},
-        bounding_box=(-_PNP_BODY_HALF, -_PNP_BODY_HALF, _PNP_BODY_HALF, _PNP_BODY_HALF),
-    )
-
-
-def _pnp_arrow_polygon(
-    *,
-    x1: float,
-    y1: float,
-    x2: float,
-    y2: float,
-    arrow_size: float,
-    arrow_inset: float,
-) -> list[tuple[float, float]]:
-    dx = x2 - x1
-    dy = y2 - y1
-    length = math.hypot(dx, dy)
-    if length < 1e-6:
-        return [(x1, y1), (x1, y1), (x1, y1)]
-
-    ux, uy = dx / length, dy / length
-    px, py = -uy, ux
-    tip_offset = min(length, arrow_size + max(0.0, arrow_inset))
-    tip_x = x1 + ux * tip_offset
-    tip_y = y1 + uy * tip_offset
-    half = arrow_size * 0.45
-    base_x = tip_x - ux * arrow_size
-    base_y = tip_y - uy * arrow_size
-    return [
-        (tip_x, tip_y),
-        (base_x + px * half, base_y + py * half),
-        (base_x - px * half, base_y - py * half),
-    ]

@@ -24,32 +24,32 @@ from __future__ import annotations
 
 import pytest
 
+import lib.symbols.symbols as _sym_mod
 from lib.core.connect import connect
 from lib.core.part import NetLabel, Part
 from lib.core.schematic import Schematic
-from lib.symbols.data import SymbolData, PinDefinition
+from lib.symbols import configure_default_symbols
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _pnp_symbol_data() -> SymbolData:
-    return SymbolData(
-        name="Q_PNP_CBE",
-        lib="Device",
-        pins=[
-            PinDefinition(number="1", name="C", type="passive", x=0, y=0),
-            PinDefinition(number="2", name="B", type="input",   x=0, y=0),
-            PinDefinition(number="3", name="E", type="passive", x=0, y=0),
-        ],
+@pytest.fixture(autouse=True)
+def _configure_example_symbols() -> None:
+    original = _sym_mod._DEFAULT_SYMBOLS
+    _sym_mod._DEFAULT_SYMBOLS = None
+    configure_default_symbols(
+        symbol_paths=["examples/kicad-symbols"],
+        preload=False,
     )
+    yield
+    _sym_mod._DEFAULT_SYMBOLS = original
 
 
 def _make_pnp_sch(net_b: str = "BASE", net_c: str = "VCC", net_e: str = "GND") -> Schematic:
     sch = Schematic("Q_PNP_CBE_demo")
-    q1 = Part("Device:Q_PNP_CBE", ref="Q1")
-    q1.attach_symbol(_pnp_symbol_data())
+    q1 = Part("Transistor_BJT:Q_PNP_CBE", ref="Q1")
     sch.add_part(q1)
 
     b = NetLabel(net_b)
@@ -150,8 +150,7 @@ class TestSvgNetLabels:
     def test_single_net_label_present(self):
         """SVG-NET-01: net label text appears when pin connected to named net."""
         sch = Schematic("pn_test")
-        q1 = Part("Device:Q_PNP_CBE", ref="Q1")
-        q1.attach_symbol(_pnp_symbol_data())
+        q1 = Part("Transistor_BJT:Q_PNP_CBE", ref="Q1")
         sch.add_part(q1)
         base = NetLabel("BASE")
         sch.add_part(base)
@@ -171,8 +170,7 @@ class TestSvgNetLabels:
     def test_no_net_label_for_unconnected_pin(self):
         """SVG-NET-03: unconnected PNP pin produces no net label text for it."""
         sch = Schematic("bare_pnp")
-        q1 = Part("Device:Q_PNP_CBE", ref="Q1")
-        q1.attach_symbol(_pnp_symbol_data())
+        q1 = Part("Transistor_BJT:Q_PNP_CBE", ref="Q1")
         sch.add_part(q1)
         # Connect only B; leave C and E unconnected
         base = NetLabel("BASE")

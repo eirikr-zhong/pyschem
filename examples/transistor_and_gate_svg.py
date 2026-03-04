@@ -3,7 +3,7 @@
 This example builds a two-transistor AND gate (resistor-transistor logic)
 and exports it as an SVG file using an A1 landscape canvas.
 
-No external KiCad symbol files are needed; parts are created directly.
+Symbols are resolved from local KiCad libraries in `examples/kicad-symbols/`.
 
 Layout (explicit Style positions for a clean, readable schematic):
 
@@ -28,6 +28,7 @@ from pyschem import (
     RenderTemplate,
     Schematic,
     WireStyle,
+    configure_default_symbols,
     connect,
 )
 
@@ -35,11 +36,14 @@ from pyschem import (
 # Build schematic
 # ---------------------------------------------------------------------------
 
+symbol_dir = Path(__file__).resolve().parent / "kicad-symbols"
+configure_default_symbols(symbol_paths=[str(symbol_dir)], preload=True)
+
 sch = Schematic("transistor_and_gate")
 
 # Parts
-q1 = Part("Device:Q_PNP_CBE", ref="Q1")
-q2 = Part("Device:Q_PNP_CBE", ref="Q2")
+q1 = Part("Transistor_BJT:Q_PNP_CBE", ref="Q1")
+q2 = Part("Transistor_BJT:Q_PNP_CBE", ref="Q2")
 
 r1 = Part("Device:R", ref="R1", value="10K")
 r2 = Part("Device:R", ref="R2", value="10K")

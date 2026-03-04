@@ -1,7 +1,7 @@
 """Schematic-level SVG renderer.
 
-Renders each Part in the schematic.  Recognised symbol types get their
-native graphic; all other parts fall back to a generic box.
+Renders each Part in the schematic. Components resolve their symbols from
+KiCad libraries; unresolved symbols are shown as a red dashed placeholder.
 
 Layout strategy (netlistsvg-inspired)
 --------------------------------------
@@ -391,7 +391,6 @@ def render_schematic_svg(
 
     box_stroke: str = _style_value(box_style.stroke, field_name="box.stroke")
     box_stroke_width: float = _style_value(box_style.stroke_width, field_name="box.stroke_width")
-    box_fill: str = _style_value(box_style.fill, field_name="box.fill")
     box_width: float = _style_value(box_style.width, field_name="box.width")
     box_min_height: float = _style_value(box_style.min_height, field_name="box.min_height")
     box_pin_row_height: float = _style_value(box_style.pin_row_height, field_name="box.pin_row_height")
@@ -400,7 +399,6 @@ def render_schematic_svg(
     pin_stub_stroke_width: float = _style_value(
         pin_style.stub_stroke_width, field_name="pin.stub_stroke_width"
     )
-    pin_stub_length: float = _style_value(pin_style.stub_length, field_name="pin.stub_length")
     pin_key_fill: str = _style_value(pin_style.key_fill, field_name="pin.key_fill")
     pin_value_fill: str = _style_value(pin_style.value_fill, field_name="pin.value_fill")
 
@@ -572,21 +570,16 @@ def render_schematic_svg(
             font_pin=font_pin,
         )
         if not used_symbol_path:
-            _render_generic_box(canvas, part, cx, cy,
-                                font_ref=font_ref,
-                                font_value=font_value,
-                                font_pin=font_pin,
-                                box_stroke=box_stroke,
-                                box_stroke_width=box_stroke_width,
-                                box_fill=box_fill,
-                                pin_stub_stroke=pin_stub_stroke,
-                                pin_stub_stroke_width=pin_stub_stroke_width,
-                                pin_stub_length=pin_stub_length,
-                                pin_key_fill=pin_key_fill,
-                                pin_value_fill=pin_value_fill,
-                                box_width=box_width,
-                                box_min_height=box_min_height,
-                                box_pin_row_height=box_pin_row_height)
+            _render_missing_symbol_placeholder(
+                canvas,
+                part,
+                cx,
+                cy,
+                font_ref=font_ref,
+                box_width=box_width,
+                box_min_height=box_min_height,
+                box_pin_row_height=box_pin_row_height,
+            )
 
     # Draw wires for each net.
     # Route nets with fewer pins first so that simple 2-pin wires (e.g. VCC/GND)
@@ -790,6 +783,7 @@ def _component_obstacle(
         x0, y0, x1, y1 = bbox
         return _Obstacle(x0, y0, x1, y1)
 
+    # Fallback geometry used by unresolved-symbol placeholders.
     resolved_box = box_style or _default_box_style()
     pins = list(part.pins.items())
     h = _box_height(
@@ -842,7 +836,7 @@ def _generic_box_pin_endpoints(
     box_style: BoxStyle | None = None,
     pin_style: PinStyle | None = None,
 ) -> dict[tuple[str, str], tuple[float, float]]:
-    """Pin endpoints for generic box, matching _render_generic_box geometry."""
+    """Pin endpoints for unresolved-symbol placeholder geometry."""
     resolved_box = box_style or _default_box_style()
     resolved_pin = pin_style or _default_pin_style()
     ref = part.ref or "?"
@@ -1866,80 +1860,29 @@ def _draw_flag_label(
     canvas._track(halo_x, halo_y)
     canvas._track(halo_x + halo_w, halo_y + halo_h)
 
-def _render_generic_box(
+def _render_missing_symbol_placeholder(
     canvas: "_TrackingCanvas",
     part: "Part",
     cx: float,
     cy: float,
     *,
     font_ref: float | None = None,
-    font_value: float | None = None,
-    font_pin: float | None = None,
-    box_stroke: str | None = None,
-    box_stroke_width: float | None = None,
-    box_fill: str | None = None,
-    pin_stub_stroke: str | None = None,
-    pin_stub_stroke_width: float | None = None,
-    pin_stub_length: float | None = None,
-    pin_key_fill: str | None = None,
-    pin_value_fill: str | None = None,
     box_width: float | None = None,
     box_min_height: float | None = None,
     box_pin_row_height: float | None = None,
 ) -> None:
-    """Render a generic part as a labelled rectangle with pin stubs.
+    """Render a red dashed missing-symbol placeholder.
 
-    Box height is auto-sized based on pin count so that pins are not
-    crowded (netlistsvg-style adaptive height).
+    This fallback is used only when no symbol could be resolved from either
+    the attached part symbol data or configured KiCad symbol libraries.
     """
     default_style = RenderStyle.default()
     default_box = _default_box_style()
-    default_pin = _default_pin_style()
 
     font_ref = (
         _style_value(default_style.ref_font_size, field_name="ref_font_size")
         if font_ref is None
         else font_ref
-    )
-    font_value = (
-        _style_value(default_style.value_font_size, field_name="value_font_size")
-        if font_value is None
-        else font_value
-    )
-    font_pin = (
-        _style_value(default_style.pin_font_size, field_name="pin_font_size")
-        if font_pin is None
-        else font_pin
-    )
-    box_stroke = (
-        _style_value(default_box.stroke, field_name="box.stroke")
-        if box_stroke is None
-        else box_stroke
-    )
-    box_stroke_width = box_stroke_width if box_stroke_width is not None else (
-        _style_value(default_box.stroke_width, field_name="box.stroke_width")
-    )
-    box_fill = _style_value(default_box.fill, field_name="box.fill") if box_fill is None else box_fill
-    pin_stub_stroke = (
-        _style_value(default_pin.stub_stroke, field_name="pin.stub_stroke")
-        if pin_stub_stroke is None
-        else pin_stub_stroke
-    )
-    pin_stub_stroke_width = (
-        pin_stub_stroke_width
-        if pin_stub_stroke_width is not None
-        else _style_value(default_pin.stub_stroke_width, field_name="pin.stub_stroke_width")
-    )
-    pin_stub_length = (
-        pin_stub_length
-        if pin_stub_length is not None
-        else _style_value(default_pin.stub_length, field_name="pin.stub_length")
-    )
-    pin_key_fill = _style_value(default_pin.key_fill, field_name="pin.key_fill") if pin_key_fill is None else pin_key_fill
-    pin_value_fill = (
-        _style_value(default_pin.value_fill, field_name="pin.value_fill")
-        if pin_value_fill is None
-        else pin_value_fill
     )
     box_width = (
         _style_value(default_box.width, field_name="box.width")
@@ -1957,56 +1900,66 @@ def _render_generic_box(
         else _style_value(default_box.pin_row_height, field_name="box.pin_row_height")
     )
 
-    pins = list(part.pins.items())
     h = _box_height(
-        len(pins),
+        len(list(part.pins.items())),
         box_min_height=box_min_height,
         box_pin_row_height=box_pin_row_height,
     )
     w = box_width
     x0, y0 = cx - w / 2, cy - h / 2
+    x1, y1 = x0 + w, y0 + h
 
-    # Box outline
-    canvas.polyline(
-        [(x0, y0), (x0 + w, y0), (x0 + w, y0 + h), (x0, y0 + h), (x0, y0)],
-        stroke=box_stroke,
-        fill=box_fill,
-        stroke_width=box_stroke_width,
+    placeholder_color = "#d32f2f"
+    placeholder_dash = "6,4"
+    placeholder_stroke_width = 2.0
+
+    canvas.line(
+        x0,
+        y0,
+        x1,
+        y0,
+        stroke=placeholder_color,
+        stroke_width=placeholder_stroke_width,
+        stroke_dasharray=placeholder_dash,
+    )
+    canvas.line(
+        x1,
+        y0,
+        x1,
+        y1,
+        stroke=placeholder_color,
+        stroke_width=placeholder_stroke_width,
+        stroke_dasharray=placeholder_dash,
+    )
+    canvas.line(
+        x1,
+        y1,
+        x0,
+        y1,
+        stroke=placeholder_color,
+        stroke_width=placeholder_stroke_width,
+        stroke_dasharray=placeholder_dash,
+    )
+    canvas.line(
+        x0,
+        y1,
+        x0,
+        y0,
+        stroke=placeholder_color,
+        stroke_width=placeholder_stroke_width,
+        stroke_dasharray=placeholder_dash,
     )
 
-    # Ref and value labels
-    ref = part.ref or "?"
-    value = part.value or ""
-    canvas.text(cx, cy - 7 if value else cy, ref,
-                font_size=font_ref, anchor="middle", dominant_baseline="middle")
-    if value:
-        canvas.text(cx, cy + 8, value,
-                    font_size=font_value, fill=pin_value_fill,
-                    anchor="middle", dominant_baseline="middle")
-
-    # Pin stubs
-    n_left = math.ceil(len(pins) / 2)
-    for i, (pin_key, pin_obj) in enumerate(pins):
-        if i < n_left:
-            row = i
-            py = y0 + (row + 0.5) * (h / n_left)
-            px = x0
-            ex = x0 - pin_stub_length
-            anchor = "end"
-            lx = ex - 4
-        else:
-            row = i - n_left
-            n_right = len(pins) - n_left
-            py = y0 + (row + 0.5) * (h / max(n_right, 1))
-            px = x0 + w
-            ex = x0 + w + pin_stub_length
-            anchor = "start"
-            lx = ex + 4
-
-        canvas.line(px, py, ex, py, stroke=pin_stub_stroke, stroke_width=pin_stub_stroke_width)
-        canvas.text(lx, py, pin_key, font_size=font_pin,
-                    fill=pin_key_fill, anchor=anchor, dominant_baseline="middle")
-        # Net names are rendered only via NetLabel flag labels in phase 6.
+    missing_label = f"? {part.lib_id or '?'}"
+    canvas.text(
+        cx,
+        cy,
+        missing_label,
+        font_size=max(10.0, font_ref * 0.7),
+        fill=placeholder_color,
+        anchor="middle",
+        dominant_baseline="middle",
+    )
 
 
 # ---------------------------------------------------------------------------

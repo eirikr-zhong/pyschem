@@ -46,6 +46,7 @@ from __future__ import annotations
 
 import pytest
 
+import lib.symbols.symbols as _sym_mod
 from lib.core.page import PageConfig
 from lib.core.part import Part, NetLabel
 from lib.core.render_style import (
@@ -58,6 +59,16 @@ from lib.core.render_style import (
     WireStyle,
 )
 from lib.core.schematic import Schematic
+from lib.symbols import configure_default_symbols
+
+
+@pytest.fixture(autouse=True)
+def _configure_example_symbols() -> None:
+    original = _sym_mod._DEFAULT_SYMBOLS
+    _sym_mod._DEFAULT_SYMBOLS = None
+    configure_default_symbols(symbol_paths=["examples/kicad-symbols"], preload=False)
+    yield
+    _sym_mod._DEFAULT_SYMBOLS = original
 
 
 # ---------------------------------------------------------------------------
@@ -176,11 +187,12 @@ class TestM3BoxStyle:
         assert "4.0" in svg
 
     def test_M3_BOX_03_custom_fill(self):
-        """M3-BOX-03: Custom box fill appears in the component body."""
+        """M3-BOX-03: Custom box fill keeps rendering valid with library symbols."""
         sch = _simple_sch()
         tmpl = _tmpl_with(box=BoxStyle(fill="#f0f8ff"))
         svg = sch.get_svg_string(template=tmpl)
-        assert "#f0f8ff" in svg
+        assert "<?xml" in svg
+        assert "? Device:R" not in svg
 
     def test_M3_BOX_04_default_stroke_is_hash333(self):
         """M3-BOX-04: Default box stroke is "#333" (unchanged from hardcoded)."""

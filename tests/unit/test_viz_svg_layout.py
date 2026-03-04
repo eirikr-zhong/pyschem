@@ -25,11 +25,22 @@ import re
 
 import pytest
 
+import lib.symbols.symbols as _sym_mod
 from lib.core.part import NetLabel
 from lib.core.part import Part
 from lib.core.page import PageConfig
 from lib.core.schematic import Schematic
 from lib.core.style import Style
+from lib.symbols import configure_default_symbols
+
+
+@pytest.fixture(autouse=True)
+def _configure_example_symbols() -> None:
+    original = _sym_mod._DEFAULT_SYMBOLS
+    _sym_mod._DEFAULT_SYMBOLS = None
+    configure_default_symbols(symbol_paths=["examples/kicad-symbols"], preload=False)
+    yield
+    _sym_mod._DEFAULT_SYMBOLS = original
 
 
 # ---------------------------------------------------------------------------
@@ -45,6 +56,14 @@ def _extract_viewbox(svg: str) -> tuple[float, float, float, float]:
 
 def _extract_polylines(svg: str) -> list[str]:
     return re.findall(r'<polyline[^/]*/>', svg)
+
+
+def _extract_text_positions(svg: str, label: str) -> list[tuple[float, float]]:
+    pattern = (
+        rf'<text x="([^"]+)" y="([^"]+)"[^>]*>'
+        rf'{re.escape(label)}</text>'
+    )
+    return [(float(x), float(y)) for x, y in re.findall(pattern, svg)]
 
 
 def _count_text_occurrences(svg: str, label: str) -> int:
@@ -86,21 +105,12 @@ class TestColumnLayout:
         """LAYOUT-01: two auto-laid-out parts in same column are vertically separated."""
         sch = _make_two_resistors()
         svg = sch.get_svg_string()
-        # Extract all polyline point-sets from the box outlines
-        polylines = _extract_polylines(svg)
-        assert len(polylines) >= 2, "Expected at least 2 box polylines"
-        # Collect first-point y values (each polyline starts "x0,y0 ...")
-        first_ys = []
-        for pl in polylines:
-            m = re.search(r'points="([^"]+)"', pl)
-            if m:
-                coords = m.group(1).split()
-                if coords:
-                    first_ys.append(float(coords[0].split(",")[1]))
-        # Two parts in same column → different y-coordinates
-        assert len(set(round(y, 0) for y in first_ys)) >= 2, (
-            f"Parts appear to be at the same y; first_ys={first_ys}"
-        )
+        r1_positions = _extract_text_positions(svg, "R1")
+        r2_positions = _extract_text_positions(svg, "R2")
+        assert r1_positions and r2_positions, "Expected R1 and R2 ref labels"
+        r1y = r1_positions[0][1]
+        r2y = r2_positions[0][1]
+        assert abs(r1y - r2y) > 20.0, f"R1/R2 y too close: {r1y}, {r2y}"
 
     def test_many_parts_wrap_to_columns(self):
         """LAYOUT-02: 6 auto-laid-out parts produce >= 2 distinct column x-positions."""
@@ -108,14 +118,11 @@ class TestColumnLayout:
         for i in range(1, 7):
             sch.add_part(Part("Device:R", ref=f"R{i}", value="1k"))
         svg = sch.get_svg_string()
-        polylines = _extract_polylines(svg)
         first_xs = []
-        for pl in polylines:
-            m = re.search(r'points="([^"]+)"', pl)
-            if m:
-                coords = m.group(1).split()
-                if coords:
-                    first_xs.append(float(coords[0].split(",")[0]))
+        for i in range(1, 7):
+            positions = _extract_text_positions(svg, f"R{i}")
+            if positions:
+                first_xs.append(positions[0][0])
         # With _PARTS_PER_COL=4 and 6 parts we expect 2 columns
         distinct_cols = len(set(round(x, 1) for x in first_xs))
         assert distinct_cols >= 2, (
@@ -131,9 +138,8 @@ class TestColumnLayout:
         r1.set_style(Style(x=10.0, y=10.0, locked=True))
         sch.add_part(r1)
         svg = sch.get_svg_string()
-        # Box should be present
-        assert "<polyline" in svg
         assert "R1" in svg
+        assert "? Device:R" not in svg
 
     def test_box_height_scales_with_pin_count(self):
         """LAYOUT-04: a 6-pin part produces a taller box than a 2-pin part."""
@@ -142,13 +148,17 @@ class TestColumnLayout:
         svg2 = sch2.get_svg_string()
         svg6 = sch6.get_svg_string()
 
-        # Extract y-coords from each box polyline to estimate height
+        # Device:U is unresolved, so compare red dashed placeholder heights.
         def _box_height_from_svg(svg: str) -> float:
-            m = re.search(r'<polyline points="([^"]+)"', svg)
-            if not m:
-                return 0.0
-            coords = [pt.split(",") for pt in m.group(1).split()]
-            ys = [float(c[1]) for c in coords if len(c) == 2]
+            matches = re.findall(
+                r'<line x1="([^"]+)" y1="([^"]+)" x2="([^"]+)" y2="([^"]+)"'
+                r'[^>]*stroke="#d32f2f"[^>]*stroke-dasharray="6,4"',
+                svg,
+            )
+            ys: list[float] = []
+            for _, y1, _, y2 in matches:
+                ys.append(float(y1))
+                ys.append(float(y2))
             return max(ys) - min(ys) if ys else 0.0
 
         h2 = _box_height_from_svg(svg2)

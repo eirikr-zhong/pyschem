@@ -1,23 +1,4 @@
-"""Coverage tests for lib/render/symbol_renderer.py.
-
-Targets uncovered lines:
-  87, 90      render_part() with rotation != 0 (group_start/group_end)
-  111, 122    render_part() value label, no value (L111 skipped)
-  151         pin_endpoints() → pin not in endpoint_by_alias (continue)
-  173         component_bbox() → raw bbox is None
-  191, 197    _resolve_symbol_data() → pnp path with attached symbol
-  205-206     _resolve_pnp_symbol() → attached has pins: tpl not found
-  255         _draw_primitive() arc branch
-  270-283     _draw_primitive() arc branch tracking
-  298         _draw_pin_stub_and_label() zero-length pin (no line)
-  309         _draw_pin_stub_and_label() no label (label is tilde)
-  331-337     _pin_label_position() non-cardinal orientations
-  347-371     _symbol_body_bbox() circle extension, fallback pin points
-  378-388     _pin_endpoint_local() various orientations including arbitrary angle
-  403-404     _to_world_point() with rotation != 0
-  413         _primitive_fill() 'bg'/'background'/'solid'/'outline' branches
-  483         _pnp_arrow_polygon() zero-length guard
-"""
+"""Coverage tests for ``lib/render/symbol_renderer.py``."""
 
 from __future__ import annotations
 
@@ -25,8 +6,10 @@ import math
 
 import pytest
 
+import lib.symbols.symbols as _sym_mod
 from lib.render.schematic_svg import _TrackingCanvas
-from lib.render.symbol_renderer import SymbolRenderer, _builtin_pnp_symbol, _pnp_arrow_polygon
+from lib.render.symbol_renderer import SymbolRenderer
+from lib.symbols import configure_default_symbols
 from lib.symbols.data import PinDefinition, SymbolData, SymbolPrimitive
 from lib.core.part import Part
 
@@ -53,6 +36,34 @@ def _make_part_with_symbol(sym: SymbolData) -> Part:
     p = Part("Test:TestSym", ref="U1")
     p.attach_symbol(sym)
     return p
+
+
+MINIMAL_DEVICE_R_SYM = '''\
+(kicad_symbol_lib
+\t(version 20211014)
+\t(generator "pyschem_test")
+\t(symbol "R"
+\t\t(in_bom yes)
+\t\t(on_board yes)
+\t\t(property "Reference" "R" (at 0 0 0) (effects (font (size 1.27 1.27))))
+\t\t(property "Value" "R" (at 0 0 0) (effects (font (size 1.27 1.27))))
+\t\t(symbol "R_1_1"
+\t\t\t(pin passive line (at -2.54 0 180) (length 2.54)
+\t\t\t\t(name "~" (effects (font (size 1.27 1.27))))
+\t\t\t\t(number "1" (effects (font (size 1.27 1.27)))))
+\t\t\t(pin passive line (at 2.54 0 0) (length 2.54)
+\t\t\t\t(name "~" (effects (font (size 1.27 1.27))))
+\t\t\t\t(number "2" (effects (font (size 1.27 1.27)))))))
+)
+'''
+
+
+@pytest.fixture(autouse=True)
+def _reset_default_symbols() -> None:
+    original = _sym_mod._DEFAULT_SYMBOLS
+    _sym_mod._DEFAULT_SYMBOLS = None
+    yield
+    _sym_mod._DEFAULT_SYMBOLS = original
 
 
 # ---------------------------------------------------------------------------
@@ -178,61 +189,34 @@ class TestComponentBbox:
 
 
 # ---------------------------------------------------------------------------
-# _resolve_symbol_data() — PNP path  (L191, L197)
+# _resolve_symbol_data() — attached + configured library
 # ---------------------------------------------------------------------------
 
-class TestResolvePnpSymbol:
-    def test_pnp_with_no_attached_returns_base(self):
-        """Requesting Q_PNP_CBE with no attached data returns built-in PNP."""
-        rend = SymbolRenderer()
-        part = Part("Device:Q_PNP_CBE", ref="Q1")
-        result = rend._resolve_symbol_data(part, "Q_PNP_CBE")
-        assert result is not None
-        assert result.name == "Q_PNP_CBE"
-
-    def test_pnp_with_attached_no_pins_returns_base(self):
-        """Attached symbol with no pins → base PNP returned unchanged."""
-        rend = SymbolRenderer()
-        sym = SymbolData("Q_PNP_CBE", "Device", pins=[], primitives=[], bounding_box=None)
-        part = Part("Device:Q_PNP_CBE", ref="Q1")
-        part.attach_symbol(sym)
-        result = rend._resolve_symbol_data(part, "Q_PNP_CBE")
-        assert result is not None
-        # Returns built-in when attached has no pins
-        assert len(result.pins) == 3  # built-in has 3 pins
-
-    def test_pnp_with_attached_pins_merged(self):
-        """Attached symbol with pins → merged PNP returned (L205-206 path)."""
-        rend = SymbolRenderer()
-        # Use standard CBE names so template lookup succeeds
-        pins = [
-            PinDefinition("1", "C", "passive", 99, 99, 0, 0),
-            PinDefinition("2", "B", "input", 99, 99, 0, 0),
-            PinDefinition("3", "E", "passive", 99, 99, 0, 0),
-            # Extra pin not in base PNP → exercises tpl is None branch (L205)
-            PinDefinition("4", "X", "passive", 0, 0, 0, 5),
-        ]
-        sym = SymbolData("Q_PNP_CBE", "Device", pins=pins, primitives=[], bounding_box=None)
-        part = Part("Device:Q_PNP_CBE", ref="Q1")
-        part.attach_symbol(sym)
-        result = rend._resolve_symbol_data(part, "Q_PNP_CBE")
-        assert result is not None
-        assert len(result.pins) >= 4
-
-    def test_non_pnp_without_attached_returns_none(self):
-        """Non-PNP symbol_name with no attached data returns None."""
+class TestResolveSymbolData:
+    def test_without_attached_and_without_library_returns_none(self):
         rend = SymbolRenderer()
         part = Part("Device:R", ref="R1")
         result = rend._resolve_symbol_data(part, "R")
         assert result is None
 
-    def test_non_pnp_with_attached_returns_attached(self):
-        """Non-PNP symbol with attached data returns that data."""
+    def test_with_attached_symbol_returns_attached(self):
         rend = SymbolRenderer()
         sym = _simple_symbol(pins=[PinDefinition("1", "A", "passive", 0, 0, 0, 5)])
         part = _make_part_with_symbol(sym)
         result = rend._resolve_symbol_data(part, "TestSym")
         assert result is sym
+
+    def test_with_configured_library_resolves_symbol(self, tmp_path):
+        sym_dir = tmp_path / "syms"
+        sym_dir.mkdir()
+        (sym_dir / "Device.kicad_sym").write_text(MINIMAL_DEVICE_R_SYM)
+        configure_default_symbols(symbol_paths=[str(sym_dir)], preload=False)
+
+        rend = SymbolRenderer()
+        part = Part("Device:R", ref="R1")
+        result = rend._resolve_symbol_data(part, "R")
+        assert result is not None
+        assert result.name == "R"
 
 
 # ---------------------------------------------------------------------------
@@ -500,34 +484,12 @@ class TestPrimitiveFill:
 
 
 # ---------------------------------------------------------------------------
-# _pnp_arrow_polygon() — zero-length guard  (L483)
-# ---------------------------------------------------------------------------
-
-class TestPnpArrowPolygon:
-    def test_zero_length_returns_degenerate(self):
-        """_pnp_arrow_polygon with same start/end returns degenerate triplet."""
-        result = _pnp_arrow_polygon(x1=5, y1=5, x2=5, y2=5,
-                                    arrow_size=6, arrow_inset=5)
-        assert len(result) == 3
-        # All three points should be the same as the tip
-        for pt in result:
-            assert abs(pt[0] - 5) < 0.01
-            assert abs(pt[1] - 5) < 0.01
-
-    def test_normal_arrow_returns_three_distinct_points(self):
-        """Normal arrow polygon has 3 distinct points."""
-        result = _pnp_arrow_polygon(x1=0, y1=0, x2=0, y2=10,
-                                    arrow_size=4, arrow_inset=2)
-        assert len(result) == 3
-
-
-# ---------------------------------------------------------------------------
 # can_render() — False cases
 # ---------------------------------------------------------------------------
 
 class TestCanRender:
     def test_can_render_false_for_no_symbol(self):
-        """can_render returns False when no symbol data attached and not PNP."""
+        """can_render returns False when no symbol data is resolvable."""
         rend = SymbolRenderer()
         part = Part("Device:R", ref="R1")
         assert rend.can_render(part, "R") is False
@@ -555,11 +517,16 @@ class TestCanRender:
         part = _make_part_with_symbol(sym)
         assert rend.can_render(part, "TestSym") is True
 
-    def test_can_render_pnp_always_true(self):
-        """can_render is True for Q_PNP_CBE (built-in symbol)."""
+    def test_can_render_true_for_library_symbol(self, tmp_path):
+        """can_render is True when symbol is found from configured libraries."""
+        sym_dir = tmp_path / "syms"
+        sym_dir.mkdir()
+        (sym_dir / "Device.kicad_sym").write_text(MINIMAL_DEVICE_R_SYM)
+        configure_default_symbols(symbol_paths=[str(sym_dir)], preload=False)
+
         rend = SymbolRenderer()
-        part = Part("Device:Q_PNP_CBE", ref="Q1")
-        assert rend.can_render(part, "Q_PNP_CBE") is True
+        part = Part("Device:R", ref="R1")
+        assert rend.can_render(part, "R") is True
 
 
 # ---------------------------------------------------------------------------
