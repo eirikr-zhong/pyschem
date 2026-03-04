@@ -5,7 +5,9 @@ Test IDs
 RO-01  Symbol scale=6 expands pin endpoint geometry predictably
 RO-02  canvas_scale=2 scales exported SVG width/height
 RO-03  High-scale labels avoid Q2 ref/VCC overlap and duplicate net text
-RO-04  Q2.B net has continuous wire connection at pin endpoint
+RO-04  Q1.B and Q2.B nets stay continuous at pin endpoints
+RO-05  Resistor pin endpoints use outer pin side
+RO-06  Q1.B/Q2.B pin labels stay outside symbol body
 """
 
 from __future__ import annotations
@@ -33,7 +35,7 @@ def _configure_example_symbols() -> None:
     _sym_mod._DEFAULT_SYMBOLS = original
 
 
-def _build_transistor_and_gate() -> tuple[Schematic, Part]:
+def _build_transistor_and_gate() -> tuple[Schematic, Part, Part]:
     sch = Schematic("transistor_and_gate")
 
     q1 = Part("Transistor_BJT:Q_PNP_CBE", ref="Q1")
@@ -77,7 +79,7 @@ def _build_transistor_and_gate() -> tuple[Schematic, Part]:
     sch.connect(r5.pin("2"), nl_gnd.label_pin)
     sch.connect(nl_vcc.label_pin, q2.pin("E"))
     sch.connect(q2.pin("C"), nl_out.label_pin)
-    return sch, q2
+    return sch, q1, q2
 
 
 def _parse_text_nodes(svg: str) -> list[tuple[str, float, float, float, str]]:
@@ -129,7 +131,7 @@ class TestRendererOverhaulRegressions:
 
     def test_RO_02_canvas_scale_scales_output_dimensions(self):
         """RO-02: RenderStyle.canvas_scale multiplies final SVG width/height."""
-        sch, _ = _build_transistor_and_gate()
+        sch, _, _ = _build_transistor_and_gate()
         style = RenderStyle.default().merge(
             RenderStyle(symbol=SymbolStyle(scale=6.0), canvas_scale=2.0)
         )
@@ -145,7 +147,7 @@ class TestRendererOverhaulRegressions:
 
     def test_RO_03_high_scale_avoids_q2_vcc_overlap_and_duplicate_net_text(self):
         """RO-03: High-scale render avoids Q2/VCC overlap and duplicate A_AND_B labels."""
-        sch, _ = _build_transistor_and_gate()
+        sch, _, _ = _build_transistor_and_gate()
         style = RenderStyle.default().merge(
             RenderStyle(symbol=SymbolStyle(scale=6.0), canvas_scale=2.0)
         )
@@ -166,9 +168,9 @@ class TestRendererOverhaulRegressions:
 
         assert svg.count(">A_AND_B<") == 1
 
-    def test_RO_04_q2_b_pin_has_continuous_wire_connection(self):
-        """RO-04: At scale=6, a blue wire segment terminates at Q2.B endpoint and continues."""
-        sch, q2 = _build_transistor_and_gate()
+    def test_RO_04_q1_q2_b_pins_have_continuous_wire_connection(self):
+        """RO-04: At scale=6, blue wire segments terminate at Q1.B/Q2.B and continue."""
+        sch, q1, q2 = _build_transistor_and_gate()
         style = RenderStyle.default().merge(
             RenderStyle(symbol=SymbolStyle(scale=6.0), canvas_scale=2.0)
         )
@@ -176,10 +178,18 @@ class TestRendererOverhaulRegressions:
         svg = sch.get_svg_string(template=tmpl)
 
         renderer = SymbolRenderer(symbol_scale=6.0)
+        q1_cx = _MARGIN + 65.0 * 3.0
+        q1_cy = _MARGIN + 50.0 * 3.0
         q2_cx = _MARGIN + 155.0 * 3.0
         q2_cy = _MARGIN + 50.0 * 3.0
-        q2_endpoints = renderer.pin_endpoints(q2, q2_cx, q2_cy, symbol_name="Q_PNP_CBE")
-        q2_b = q2_endpoints[("Q2", "2")]
+        q1_b = renderer.pin_endpoints(
+            q1,
+            q1_cx,
+            q1_cy,
+            symbol_name="Q_PNP_CBE",
+            rotation=90,
+        )[("Q1", "2")]
+        q2_b = renderer.pin_endpoints(q2, q2_cx, q2_cy, symbol_name="Q_PNP_CBE")[("Q2", "2")]
 
         line_pattern = (
             r'<line x1="([^"]+)" y1="([^"]+)" x2="([^"]+)" y2="([^"]+)"'
@@ -194,25 +204,85 @@ class TestRendererOverhaulRegressions:
         def _same_point(a: tuple[float, float], b: tuple[float, float]) -> bool:
             return abs(a[0] - b[0]) <= 0.2 and abs(a[1] - b[1]) <= 0.2
 
-        segments_at_q2b = [
-            seg for seg in lines
-            if _same_point((seg[0], seg[1]), q2_b) or _same_point((seg[2], seg[3]), q2_b)
-        ]
-        assert segments_at_q2b, f"No wire endpoint found at Q2.B endpoint {q2_b}"
+        def _assert_continuous_endpoint(endpoint: tuple[float, float], label: str) -> None:
+            touching = [
+                seg for seg in lines
+                if _same_point((seg[0], seg[1]), endpoint) or _same_point((seg[2], seg[3]), endpoint)
+            ]
+            assert touching, f"No wire endpoint found at {label} endpoint {endpoint}"
 
-        continued = False
-        for seg in segments_at_q2b:
-            if _same_point((seg[0], seg[1]), q2_b):
-                other = (seg[2], seg[3])
-            else:
-                other = (seg[0], seg[1])
-            for other_seg in lines:
-                if other_seg == seg:
-                    continue
-                if _same_point((other_seg[0], other_seg[1]), other) or _same_point((other_seg[2], other_seg[3]), other):
-                    continued = True
+            continued = False
+            for seg in touching:
+                other = (seg[2], seg[3]) if _same_point((seg[0], seg[1]), endpoint) else (seg[0], seg[1])
+                for other_seg in lines:
+                    if other_seg == seg:
+                        continue
+                    if _same_point((other_seg[0], other_seg[1]), other) or _same_point((other_seg[2], other_seg[3]), other):
+                        continued = True
+                        break
+                if continued:
                     break
-            if continued:
-                break
+            assert continued, f"{label} wire touches endpoint but does not continue into net routing"
 
-        assert continued, "Q2.B wire touches endpoint but does not continue into net routing"
+        _assert_continuous_endpoint(q1_b, "Q1.B")
+        _assert_continuous_endpoint(q2_b, "Q2.B")
+
+    def test_RO_05_resistor_pin_endpoints_use_outer_side(self):
+        """RO-05: R pin endpoints stay at the outer connection side of stubs."""
+        r1 = Part("Device:R", ref="R1")
+        r1.pin("1")
+        r1.pin("2")
+
+        renderer = SymbolRenderer(symbol_scale=1.0)
+        endpoints = renderer.pin_endpoints(r1, 100.0, 200.0, symbol_name="R")
+
+        assert endpoints[("R1", "1")] == pytest.approx((100.0, 203.81), rel=1e-6)
+        assert endpoints[("R1", "2")] == pytest.approx((100.0, 196.19), rel=1e-6)
+
+    def test_RO_06_q1_q2_b_labels_are_outside_component_boxes(self):
+        """RO-06: Q1.B/Q2.B labels are not trapped inside component boxes."""
+        sch, q1, q2 = _build_transistor_and_gate()
+        style = RenderStyle.default().merge(
+            RenderStyle(symbol=SymbolStyle(scale=6.0), canvas_scale=2.0)
+        )
+        tmpl = RenderTemplate.from_style(style, page=PageConfig.a1(landscape=True))
+        svg = sch.get_svg_string(template=tmpl)
+
+        nodes = _parse_text_nodes(svg)
+        b_nodes = [node for node in nodes if node[0] == "B"]
+        assert b_nodes, "Expected at least one 'B' text node"
+
+        renderer = SymbolRenderer(symbol_scale=6.0)
+        q1_center = (_MARGIN + 65.0 * 3.0, _MARGIN + 50.0 * 3.0)
+        q2_center = (_MARGIN + 155.0 * 3.0, _MARGIN + 50.0 * 3.0)
+
+        q1_box = renderer.component_bbox(
+            q1,
+            q1_center[0],
+            q1_center[1],
+            symbol_name="Q_PNP_CBE",
+            rotation=90,
+        )
+        q2_box = renderer.component_bbox(
+            q2,
+            q2_center[0],
+            q2_center[1],
+            symbol_name="Q_PNP_CBE",
+        )
+        assert q1_box is not None
+        assert q2_box is not None
+
+        def _nearest_b(center: tuple[float, float]) -> tuple[str, float, float, float, str]:
+            return min(
+                b_nodes,
+                key=lambda node: (node[1] - center[0]) ** 2 + (node[2] - center[1]) ** 2,
+            )
+
+        q1_b_text = _nearest_b(q1_center)
+        q2_b_text = _nearest_b(q2_center)
+
+        q1_label_box = _text_box(*q1_b_text)
+        q2_label_box = _text_box(*q2_b_text)
+
+        assert not _boxes_overlap(q1_label_box, q1_box)
+        assert not _boxes_overlap(q2_label_box, q2_box)

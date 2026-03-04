@@ -300,8 +300,8 @@ class TestDrawPinStubAndLabel:
 
 class TestPinLabelPosition:
     @pytest.mark.parametrize("orientation,expected_anchor", [
-        (0, "start"),
-        (180, "end"),
+        (0, "end"),
+        (180, "start"),
         (90, "middle"),
         (270, "middle"),
     ])
@@ -309,32 +309,27 @@ class TestPinLabelPosition:
         rend = SymbolRenderer()
         pin = PinDefinition("1", "A", "passive", 0, 0, orientation, 10)
         ex, ey = rend._pin_endpoint_local(pin)
-        _, _, anchor = rend._pin_label_position(pin, ex, ey)
+        rx, ry = rend._pin_stub_inner_local(pin)
+        _, _, anchor = rend._pin_label_position(pin, ex, ey, rx, ry)
         assert anchor == expected_anchor
 
-    def test_non_cardinal_negative_end_x_returns_end(self):
-        """End_x < 0 → anchor='end'."""
+    def test_non_cardinal_leftward_direction_returns_end(self):
+        """Leftward outward direction uses anchor='end'."""
         rend = SymbolRenderer()
         pin = PinDefinition("1", "A", "passive", 0, 0, 45, 10)
-        # Force end_x to be negative by placing root at negative x
-        rend2 = SymbolRenderer()
-        pin2 = PinDefinition("1", "A", "passive", -20, 0, 45, 10)
-        ex, ey = rend2._pin_endpoint_local(pin2)
-        _, _, anchor = rend2._pin_label_position(pin2, ex, ey)
-        # end_x < 0 → "end"
-        if ex < 0:
-            assert anchor == "end"
-        else:
-            assert anchor == "start"
-
-    def test_non_cardinal_positive_end_x_returns_start(self):
-        """End_x >= 0 → anchor='start'."""
-        rend = SymbolRenderer()
-        pin = PinDefinition("1", "A", "passive", 20, 0, 315, 10)
         ex, ey = rend._pin_endpoint_local(pin)
-        _, _, anchor = rend._pin_label_position(pin, ex, ey)
-        # Just check it returns one of the valid anchors
-        assert anchor in ("start", "end", "middle")
+        rx, ry = rend._pin_stub_inner_local(pin)
+        _, _, anchor = rend._pin_label_position(pin, ex, ey, rx, ry)
+        assert anchor == "end"
+
+    def test_non_cardinal_rightward_direction_returns_start(self):
+        """Rightward outward direction uses anchor='start'."""
+        rend = SymbolRenderer()
+        pin = PinDefinition("1", "A", "passive", 0, 0, 150, 10)
+        ex, ey = rend._pin_endpoint_local(pin)
+        rx, ry = rend._pin_stub_inner_local(pin)
+        _, _, anchor = rend._pin_label_position(pin, ex, ey, rx, ry)
+        assert anchor == "start"
 
 
 # ---------------------------------------------------------------------------
@@ -390,21 +385,21 @@ class TestSymbolBodyBbox:
         result = rend._symbol_body_bbox(sym)
         assert result is not None
         x0, y0, x1, y1 = result
-        # Root at x=50, endpoint at x=30 (orientation=0, length=20)
-        assert x0 <= 30
-        assert x1 >= 50
+        # Outer endpoint at x=50, inner endpoint at x=70 (orientation=0, length=20)
+        assert x0 <= 50
+        assert x1 >= 70
 
 
 # ---------------------------------------------------------------------------
-# _pin_endpoint_local() — various orientations  (L378-391)
+# _pin_endpoint_local() / _pin_stub_inner_local() geometry
 # ---------------------------------------------------------------------------
 
 class TestPinEndpointLocal:
     @pytest.mark.parametrize("orientation,expected", [
-        (0, (-10, 0)),   # orientation 0 → endpoint x = root_x - length
-        (180, (10, 0)),  # orientation 180 → endpoint x = root_x + length
-        (90, (0, 10)),   # orientation 90 → endpoint y = root_y + length
-        (270, (0, -10)), # orientation 270 → endpoint y = root_y - length
+        (0, (0, 0)),
+        (180, (0, 0)),
+        (90, (0, 0)),
+        (270, (0, 0)),
     ])
     def test_cardinal_orientations(self, orientation, expected):
         pin = PinDefinition("1", "~", "passive", 0, 0, orientation, 10)
@@ -412,15 +407,12 @@ class TestPinEndpointLocal:
         assert abs(px - expected[0]) < 0.01
         assert abs(py - expected[1]) < 0.01
 
-    def test_arbitrary_angle_orientation(self):
-        """Non-cardinal orientation uses trigonometric formula (L387-390)."""
+    def test_endpoint_is_pin_outer_location_independent_of_orientation(self):
+        """Electrical endpoint is the pin's declared outer connection point."""
         pin = PinDefinition("1", "~", "passive", 0, 0, 45, 10)
         px, py = SymbolRenderer._pin_endpoint_local(pin)
-        # For orientation=45: dx = -cos(45°)*10, dy = +sin(45°)*10
-        expected_x = -10 * math.cos(math.radians(45))
-        expected_y = 10 * math.sin(math.radians(45))
-        assert abs(px - expected_x) < 0.01
-        assert abs(py - expected_y) < 0.01
+        assert px == 0
+        assert py == 0
 
     def test_zero_length_pin_returns_root(self):
         """Pin with length<=0 returns root position (L375-376)."""
@@ -428,6 +420,27 @@ class TestPinEndpointLocal:
         px, py = SymbolRenderer._pin_endpoint_local(pin)
         assert px == 5
         assert py == 7
+
+    @pytest.mark.parametrize("orientation,expected", [
+        (0, (10, 0)),
+        (180, (-10, 0)),
+        (90, (0, 10)),
+        (270, (0, -10)),
+    ])
+    def test_stub_inner_endpoint_uses_orientation_direction(self, orientation, expected):
+        pin = PinDefinition("1", "~", "passive", 0, 0, orientation, 10)
+        px, py = SymbolRenderer._pin_stub_inner_local(pin)
+        assert abs(px - expected[0]) < 0.01
+        assert abs(py - expected[1]) < 0.01
+
+    def test_stub_inner_endpoint_arbitrary_angle(self):
+        """Non-cardinal orientation uses trigonometric formula."""
+        pin = PinDefinition("1", "~", "passive", 0, 0, 45, 10)
+        px, py = SymbolRenderer._pin_stub_inner_local(pin)
+        expected_x = 10 * math.cos(math.radians(45))
+        expected_y = 10 * math.sin(math.radians(45))
+        assert abs(px - expected_x) < 0.01
+        assert abs(py - expected_y) < 0.01
 
 
 # ---------------------------------------------------------------------------

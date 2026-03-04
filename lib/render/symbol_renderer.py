@@ -280,8 +280,8 @@ class SymbolRenderer:
         font_pin: float,
     ) -> None:
         s = self._style.symbol_scale
-        root_x, root_y = pin.x * s, pin.y * s
         end_x, end_y = self._pin_endpoint_local(pin, scale=s)
+        root_x, root_y = self._pin_stub_inner_local(pin, scale=s)
 
         if abs(root_x - end_x) > 0.01 or abs(root_y - end_y) > 0.01:
             canvas.line(
@@ -297,7 +297,14 @@ class SymbolRenderer:
         if not label or label == "~":
             return
 
-        tx, ty, anchor = self._pin_label_position(pin, end_x, end_y, font_pin=font_pin)
+        tx, ty, anchor = self._pin_label_position(
+            pin,
+            end_x,
+            end_y,
+            root_x,
+            root_y,
+            font_pin=font_pin,
+        )
         canvas.text(
             cx + tx,
             cy + ty,
@@ -309,22 +316,38 @@ class SymbolRenderer:
         )
 
     def _pin_label_position(
-        self, pin: PinDefinition, end_x: float, end_y: float, *, font_pin: float = 10.0
+        self,
+        pin: PinDefinition,
+        end_x: float,
+        end_y: float,
+        root_x: float,
+        root_y: float,
+        *,
+        font_pin: float = 10.0,
     ) -> tuple[float, float, str]:
         scale = max(1.0, self._style.symbol_scale)
         offset = max(8.0, font_pin * 0.8 + (scale - 1.0) * 2.5)
-        orientation = pin.orientation % 360
-        if orientation == 180:
-            return (end_x - offset, end_y, "end")
-        if orientation == 0:
-            return (end_x + offset, end_y, "start")
-        if orientation == 90:
-            return (end_x, end_y - offset, "middle")
-        if orientation == 270:
-            return (end_x, end_y + offset, "middle")
-        if end_x < 0:
-            return (end_x - offset, end_y, "end")
-        return (end_x + offset, end_y, "start")
+        dx = end_x - root_x
+        dy = end_y - root_y
+        length = math.hypot(dx, dy)
+
+        if length > 0.01:
+            ux = dx / length
+            uy = dy / length
+        else:
+            orientation = pin.orientation % 360
+            rad = math.radians(orientation)
+            ux = -math.cos(rad)
+            uy = -math.sin(rad)
+
+        tx = end_x + ux * offset
+        ty = end_y + uy * offset
+
+        if abs(ux) >= max(0.35, abs(uy)):
+            anchor = "start" if ux > 0 else "end"
+        else:
+            anchor = "middle"
+        return (tx, ty, anchor)
 
     def _ref_value_positions(
         self,
@@ -369,11 +392,10 @@ class SymbolRenderer:
                     ys.append(y * s)
 
         for pin in symbol.pins:
-            xs.append(pin.x * s)
-            ys.append(pin.y * s)
-            px, py = self._pin_endpoint_local(pin, scale=s)
-            xs.append(px)
-            ys.append(py)
+            outer_x, outer_y = self._pin_endpoint_local(pin, scale=s)
+            inner_x, inner_y = self._pin_stub_inner_local(pin, scale=s)
+            xs.extend([outer_x, inner_x])
+            ys.extend([outer_y, inner_y])
 
         if not xs or not ys:
             return None
@@ -381,6 +403,12 @@ class SymbolRenderer:
 
     @staticmethod
     def _pin_endpoint_local(pin: PinDefinition, *, scale: float = 1.0) -> tuple[float, float]:
+        """Return the electrical connection point (outer pin endpoint)."""
+        return (pin.x * scale, pin.y * scale)
+
+    @staticmethod
+    def _pin_stub_inner_local(pin: PinDefinition, *, scale: float = 1.0) -> tuple[float, float]:
+        """Return the symbol-body side endpoint of the drawn pin stub."""
         if pin.length <= 0:
             return (pin.x * scale, pin.y * scale)
 
@@ -388,17 +416,9 @@ class SymbolRenderer:
         lx = pin.length * scale
         px = pin.x * scale
         py = pin.y * scale
-        if orientation == 0:
-            return (px - lx, py)
-        if orientation == 180:
-            return (px + lx, py)
-        if orientation == 90:
-            return (px, py + lx)
-        if orientation == 270:
-            return (px, py - lx)
         rad = math.radians(orientation)
         return (
-            px - lx * math.cos(rad),
+            px + lx * math.cos(rad),
             py + lx * math.sin(rad),
         )
 
