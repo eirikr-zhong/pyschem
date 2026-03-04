@@ -81,7 +81,7 @@ in by the caller.  When no ``PageConfig`` is provided the renderer uses
 Canvas output scaling
 ---------------------
 Final SVG ``width``/``height`` are multiplied by an effective output scale.
-In ``fixed`` mode this uses ``RenderStyle.canvas_scale``.  In ``auto`` mode
+In ``fixed`` mode this uses ``Style.canvas_scale``.  In ``auto`` mode
 the renderer derives a scale from style font sizes and a readability target,
 then clamps to configured min/max bounds.
 """
@@ -97,11 +97,13 @@ from lib.core.render_style import (
     HaloStyle,
     NetLabelStyle,
     PinStyle,
-    RenderStyle,
+    SymbolStyle,
     RenderTemplate as _RenderTemplateT,
     TextPlacementStyle,
     WireStyle,
 )
+from lib.core.style import Style
+from lib.core.style_resolver import resolve_style
 from lib.render.svg_renderer import SvgCanvas
 from lib.render.symbol_renderer import SymbolRenderer
 
@@ -152,7 +154,7 @@ def _default_pin_style() -> PinStyle:
 
 def _style_value(value: _T | None, *, field_name: str) -> _T:
     if value is None:
-        raise ValueError(f"RenderStyle.default() produced None for {field_name}")
+        raise ValueError(f"Style.default() produced None for {field_name}")
     return value
 
 
@@ -161,7 +163,7 @@ def _clamp(value: float, lower: float, upper: float) -> float:
 
 
 def _effective_output_scale(
-    style: RenderStyle,
+    style: Style,
     *,
     font_ref: float,
     font_net: float,
@@ -169,7 +171,7 @@ def _effective_output_scale(
     font_pin: float,
     ln_font_size: float,
 ) -> float:
-    """Resolve final output scale from RenderStyle fixed/auto settings."""
+    """Resolve final output scale from Style fixed/auto settings."""
     mode_raw = (_style_value(style.canvas_scale_mode, field_name="canvas_scale_mode") or "auto")
     mode = mode_raw.strip().lower()
     if mode not in {"fixed", "auto"}:
@@ -199,6 +201,33 @@ def _effective_output_scale(
         raw_scale = target_font_px / baseline_font_px
 
     return _clamp(raw_scale, scale_min, scale_max)
+
+
+def _symbol_renderer_from_style(style: Style) -> SymbolRenderer:
+    """Build a symbol renderer configured from a resolved unified style."""
+    box_style = style.box or BoxStyle.default()
+    pin_style = style.pin or PinStyle.default()
+    symbol_style = style.symbol or SymbolStyle.default()
+    ref_text_style = style.ref_text or TextPlacementStyle.default_ref()
+    value_text_style = style.value_text or TextPlacementStyle.default_value()
+    return SymbolRenderer(
+        primitive_stroke=_style_value(box_style.stroke, field_name="box.stroke"),
+        primitive_stroke_width=_style_value(
+            box_style.stroke_width, field_name="box.stroke_width"
+        ),
+        pin_stub_stroke=_style_value(pin_style.stub_stroke, field_name="pin.stub_stroke"),
+        pin_stub_width=_style_value(pin_style.stub_stroke_width, field_name="pin.stub_stroke_width"),
+        pin_text_fill=_style_value(pin_style.key_fill, field_name="pin.key_fill"),
+        value_text_fill=_style_value(pin_style.value_fill, field_name="pin.value_fill"),
+        symbol_scale=max(0.1, float(_style_value(symbol_style.scale, field_name="symbol.scale"))),
+        ref_text_style=ref_text_style,
+        value_text_style=value_text_style,
+        pin_name_visible=_style_value(pin_style.pin_name_visible, field_name="pin.pin_name_visible"),
+        pin_value_visible=_style_value(
+            pin_style.pin_value_visible,
+            field_name="pin.pin_value_visible",
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -409,21 +438,13 @@ def render_schematic_svg(
     else:
         tmpl = template
 
-    # Merge with defaults so None sub-fields fall back cleanly
-    base_style = RenderStyle.default()
-    effective_style = base_style.merge(tmpl.style)
+    # Unified style resolution root for schematic-level controls.
+    canvas_style = resolve_style(None, tmpl)
 
-    wire_style: WireStyle = effective_style.wire or _default_wire_style()
-    ln_style: NetLabelStyle = effective_style.label_net or _default_net_label_style()
-    halo_style: HaloStyle = effective_style.halo or _default_halo_style()
-    box_style: BoxStyle = effective_style.box or _default_box_style()
-    pin_style: PinStyle = effective_style.pin or _default_pin_style()
-    ref_text_style: TextPlacementStyle = (
-        effective_style.ref_text or TextPlacementStyle.default_ref()
-    )
-    value_text_style: TextPlacementStyle = (
-        effective_style.value_text or TextPlacementStyle.default_value()
-    )
+    wire_style: WireStyle = canvas_style.wire or _default_wire_style()
+    ln_style: NetLabelStyle = canvas_style.label_net or _default_net_label_style()
+    halo_style: HaloStyle = canvas_style.halo or _default_halo_style()
+    pin_style: PinStyle = canvas_style.pin or _default_pin_style()
 
     # Resolved style scalars — used throughout this function
     wire_color: str = _style_value(wire_style.color, field_name="wire.color")
@@ -448,51 +469,28 @@ def render_schematic_svg(
     halo_opacity: str = _style_value(halo_style.opacity, field_name="halo.opacity")
     halo_pad: float = _style_value(halo_style.pad, field_name="halo.pad")
 
-    box_stroke: str = _style_value(box_style.stroke, field_name="box.stroke")
-    box_stroke_width: float = _style_value(box_style.stroke_width, field_name="box.stroke_width")
-    box_width: float = _style_value(box_style.width, field_name="box.width")
-    box_min_height: float = _style_value(box_style.min_height, field_name="box.min_height")
-    box_pin_row_height: float = _style_value(box_style.pin_row_height, field_name="box.pin_row_height")
-
-    pin_stub_stroke: str = _style_value(pin_style.stub_stroke, field_name="pin.stub_stroke")
-    pin_stub_stroke_width: float = _style_value(
-        pin_style.stub_stroke_width, field_name="pin.stub_stroke_width"
-    )
-    pin_key_fill: str = _style_value(pin_style.key_fill, field_name="pin.key_fill")
-    pin_value_fill: str = _style_value(pin_style.value_fill, field_name="pin.value_fill")
-
-    symbol_scale = 1.0
-    if effective_style.symbol is not None and effective_style.symbol.scale is not None:
-        symbol_scale = max(0.1, float(effective_style.symbol.scale))
-
-    symbol_renderer = SymbolRenderer(
-        primitive_stroke=box_stroke,
-        primitive_stroke_width=box_stroke_width,
-        pin_stub_stroke=pin_stub_stroke,
-        pin_stub_width=pin_stub_stroke_width,
-        pin_text_fill=pin_key_fill,
-        value_text_fill=pin_value_fill,
-        symbol_scale=symbol_scale,
-        ref_text_style=ref_text_style,
-        value_text_style=value_text_style,
+    canvas_symbol_style = canvas_style.symbol or SymbolStyle.default()
+    symbol_scale = max(
+        0.1,
+        float(_style_value(canvas_symbol_style.scale, field_name="symbol.scale")),
     )
 
-    background: str = _style_value(effective_style.background, field_name="background")
+    background: str = _style_value(canvas_style.background, field_name="background")
     font_ref: float = _style_value(
-        pin_style.font_ref if pin_style.font_ref is not None else effective_style.ref_font_size,
+        pin_style.font_ref if pin_style.font_ref is not None else canvas_style.ref_font_size,
         field_name="ref_font_size",
     )
-    font_net: float = _style_value(effective_style.net_font_size, field_name="net_font_size")
+    font_net: float = _style_value(canvas_style.net_font_size, field_name="net_font_size")
     font_value: float = _style_value(
-        pin_style.font_value if pin_style.font_value is not None else effective_style.value_font_size,
+        pin_style.font_value if pin_style.font_value is not None else canvas_style.value_font_size,
         field_name="value_font_size",
     )
     font_pin: float = _style_value(
-        pin_style.font_pin if pin_style.font_pin is not None else effective_style.pin_font_size,
+        pin_style.font_pin if pin_style.font_pin is not None else canvas_style.pin_font_size,
         field_name="pin_font_size",
     )
     output_scale = _effective_output_scale(
-        effective_style,
+        canvas_style,
         font_ref=font_ref,
         font_net=font_net,
         font_value=font_value,
@@ -521,12 +519,26 @@ def render_schematic_svg(
     from lib.core.part import NetLabel
 
     parts = schematic.parts
+    resolved_part_styles: dict[str, Style] = {}
+    for idx, part in enumerate(parts):
+        if isinstance(part, NetLabel):
+            continue
+        ref = part.ref or f"_part{idx}"
+        resolved_part_styles[ref] = resolve_style(part, tmpl)
+
     positions: dict[str, tuple[float, float]] = {}
     for idx, part in enumerate(parts):
         if isinstance(part, NetLabel):
             continue
-        cx, cy = _part_position(part, idx, canvas_w, canvas_h, len(parts))
         ref = part.ref or f"_part{idx}"
+        cx, cy = _part_position(
+            part,
+            idx,
+            canvas_w,
+            canvas_h,
+            len(parts),
+            resolved_style=resolved_part_styles[ref],
+        )
         positions[ref] = (cx, cy)
 
     # --- Phase 1b: build obstacle list (one per component body) -------------
@@ -535,6 +547,8 @@ def render_schematic_svg(
         if isinstance(part, NetLabel):
             continue
         ref = part.ref or f"_part{idx}"
+        part_style = resolved_part_styles[ref]
+        part_renderer = _symbol_renderer_from_style(part_style)
         cx, cy = positions[ref]
         lib_id = part.lib_id or ""
         symbol_name = lib_id.split(":")[-1] if ":" in lib_id else lib_id
@@ -543,8 +557,9 @@ def render_schematic_svg(
             cx,
             cy,
             symbol_name,
-            symbol_renderer=symbol_renderer,
-            box_style=box_style,
+            symbol_renderer=part_renderer,
+            box_style=part_style.box or _default_box_style(),
+            rotation=part_style.rotation,
         )
         obstacles.append(obs)
 
@@ -555,6 +570,8 @@ def render_schematic_svg(
         if isinstance(part, NetLabel):
             continue
         ref = part.ref or f"_part{idx}"
+        part_style = resolved_part_styles[ref]
+        part_renderer = _symbol_renderer_from_style(part_style)
         cx, cy = positions[ref]
         lib_id = part.lib_id or ""
         symbol_name = lib_id.split(":")[-1] if ":" in lib_id else lib_id
@@ -563,9 +580,10 @@ def render_schematic_svg(
             cx,
             cy,
             symbol_name,
-            symbol_renderer=symbol_renderer,
-            box_style=box_style,
-            pin_style=pin_style,
+            symbol_renderer=part_renderer,
+            box_style=part_style.box or _default_box_style(),
+            pin_style=part_style.pin or _default_pin_style(),
+            rotation=part_style.rotation,
         )
         pin_endpoints.update(ep)
 
@@ -632,20 +650,42 @@ def render_schematic_svg(
         if isinstance(part, NetLabel):
             continue
         ref = part.ref or f"_part{idx}"
+        part_style = resolved_part_styles[ref]
+        part_box_style = part_style.box or _default_box_style()
+        part_pin_style = part_style.pin or _default_pin_style()
+        part_ref_text_style = part_style.ref_text or TextPlacementStyle.default_ref()
+        part_value_text_style = part_style.value_text or TextPlacementStyle.default_value()
+        part_symbol_renderer = _symbol_renderer_from_style(part_style)
         cx, cy = positions[ref]
         lib_id = part.lib_id or ""
         symbol_name = lib_id.split(":")[-1] if ":" in lib_id else lib_id
-        rotation = getattr(part.get_style(), "rotation", 0)
-        used_symbol_path = symbol_renderer.render_part(
+        rotation = part_style.rotation
+        part_font_ref = _style_value(
+            part_pin_style.font_ref if part_pin_style.font_ref is not None else part_style.ref_font_size,
+            field_name="ref_font_size",
+        )
+        part_font_value = _style_value(
+            (
+                part_pin_style.font_value
+                if part_pin_style.font_value is not None
+                else part_style.value_font_size
+            ),
+            field_name="value_font_size",
+        )
+        part_font_pin = _style_value(
+            part_pin_style.font_pin if part_pin_style.font_pin is not None else part_style.pin_font_size,
+            field_name="pin_font_size",
+        )
+        used_symbol_path = part_symbol_renderer.render_part(
             canvas,
             part,
             cx,
             cy,
             symbol_name=symbol_name,
             rotation=rotation,
-            font_ref=font_ref,
-            font_value=font_value,
-            font_pin=font_pin,
+            font_ref=part_font_ref,
+            font_value=part_font_value,
+            font_pin=part_font_pin,
         )
         if not used_symbol_path:
             _render_missing_symbol_placeholder(
@@ -654,14 +694,17 @@ def render_schematic_svg(
                 cx,
                 cy,
                 rotation=rotation,
-                font_ref=font_ref,
-                font_value=font_value,
-                box_width=box_width,
-                box_min_height=box_min_height,
-                box_pin_row_height=box_pin_row_height,
-                ref_text_style=ref_text_style,
-                value_text_style=value_text_style,
-                value_text_fill=pin_value_fill,
+                font_ref=part_font_ref,
+                font_value=part_font_value,
+                box_width=_style_value(part_box_style.width, field_name="box.width"),
+                box_min_height=_style_value(part_box_style.min_height, field_name="box.min_height"),
+                box_pin_row_height=_style_value(
+                    part_box_style.pin_row_height,
+                    field_name="box.pin_row_height",
+                ),
+                ref_text_style=part_ref_text_style,
+                value_text_style=part_value_text_style,
+                value_text_fill=_style_value(part_pin_style.value_fill, field_name="pin.value_fill"),
             )
 
     # Draw wires for each net.
@@ -824,6 +867,8 @@ def _part_position(
     total_w: float,
     total_h: float,
     n_parts: int,
+    *,
+    resolved_style: Style | None = None,
 ) -> tuple[float, float]:
     """Return (cx, cy) for a part.
 
@@ -833,7 +878,7 @@ def _part_position(
        ``_PARTS_PER_COL`` rows, arranged left-to-right.  Within each column
        parts are stacked vertically and centred.
     """
-    style = part.get_style()
+    style = resolved_style if resolved_style is not None else part.get_style()
     sx = getattr(style, "x", None)
     sy = getattr(style, "y", None)
     if sx is not None and sy is not None:
@@ -896,10 +941,10 @@ def _component_obstacle(
     *,
     symbol_renderer: SymbolRenderer | None = None,
     box_style: BoxStyle | None = None,
+    rotation: int = 0,
 ) -> _Obstacle:
     """Return the routing obstacle (expanded AABB) for a component."""
     renderer = symbol_renderer or SymbolRenderer()
-    rotation = getattr(part.get_style(), "rotation", 0)
     bbox = renderer.component_bbox(
         part,
         cx,
@@ -937,10 +982,10 @@ def _compute_pin_endpoints(
     symbol_renderer: SymbolRenderer | None = None,
     box_style: BoxStyle | None = None,
     pin_style: PinStyle | None = None,
+    rotation: int = 0,
 ) -> dict[tuple[str, str], tuple[float, float]]:
     """Return {(part_ref, pin_key): (px, py)} for all pins of *part*."""
     renderer = symbol_renderer or SymbolRenderer()
-    rotation = getattr(part.get_style(), "rotation", 0)
     endpoints = renderer.pin_endpoints(
         part,
         cx,
@@ -1062,7 +1107,7 @@ def _draw_wire_net(
     """
     default_wire = _default_wire_style()
     default_halo = _default_halo_style()
-    default_style = RenderStyle.default()
+    default_style = Style.default()
 
     wire_color = (
         _style_value(default_wire.color, field_name="wire.color")
@@ -1653,7 +1698,7 @@ def _draw_net_label(
     """
     default_wire = _default_wire_style()
     default_halo = _default_halo_style()
-    default_style = RenderStyle.default()
+    default_style = Style.default()
     wire_color = (
         _style_value(default_wire.color, field_name="wire.color")
         if wire_color is None
@@ -2059,7 +2104,7 @@ def _render_missing_symbol_placeholder(
     This fallback is used only when no symbol could be resolved from either
     the attached part symbol data or configured KiCad symbol libraries.
     """
-    default_style = RenderStyle.default()
+    default_style = Style.default()
     default_box = _default_box_style()
 
     font_ref = (

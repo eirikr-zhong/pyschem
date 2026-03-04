@@ -32,6 +32,7 @@ Example::
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass, field, fields
 from typing import Optional
 
@@ -51,7 +52,7 @@ def _merge_fields(base: object, override: object) -> dict:
     """
     result = {}
     for f in fields(base):  # type: ignore[arg-type]
-        ov = getattr(override, f.name)
+        ov = getattr(override, f.name, None)
         result[f.name] = getattr(base, f.name) if ov is None else ov
     return result
 
@@ -203,6 +204,8 @@ class PinStyle:
     font_ref: Optional[float] = None
     font_value: Optional[float] = None
     font_pin: Optional[float] = None
+    pin_name_visible: Optional[bool] = None
+    pin_value_visible: Optional[bool] = None
 
     @classmethod
     def default(cls) -> "PinStyle":
@@ -216,6 +219,8 @@ class PinStyle:
             font_ref=14.0,
             font_value=11.0,
             font_pin=10.0,
+            pin_name_visible=True,
+            pin_value_visible=True,
         )
 
     def merge(self, override: "PinStyle") -> "PinStyle":
@@ -458,7 +463,7 @@ class RenderStyle:
         merged_subs: dict = {}
         for fname, default_fn in _sub_defaults.items():
             base_sub = getattr(self, fname) or default_fn()
-            ovr_sub = getattr(override, fname)
+            ovr_sub = getattr(override, fname, None)
             if ovr_sub is not None:
                 merged_subs[fname] = base_sub.merge(ovr_sub)
             else:
@@ -468,17 +473,19 @@ class RenderStyle:
         scalars = {
             name: (
                 getattr(self, name)
-                if getattr(override, name) is None
-                else getattr(override, name)
+                if getattr(override, name, None) is None
+                else getattr(override, name, None)
             )
             for name in scalar_names
         }
-        if override.canvas_scale is not None and override.canvas_scale_mode is None:
+        if getattr(override, "canvas_scale", None) is not None and getattr(
+            override, "canvas_scale_mode", None
+        ) is None:
             # Backward compatibility: historical usage set only canvas_scale and
             # expected fixed-width/height output scaling.
             scalars["canvas_scale_mode"] = "fixed"
 
-        return RenderStyle(**merged_subs, **scalars)
+        return type(self)(**merged_subs, **scalars)
 
 
 # ---------------------------------------------------------------------------
@@ -486,9 +493,15 @@ class RenderStyle:
 # ---------------------------------------------------------------------------
 
 
+def _default_template_style() -> "RenderStyle":
+    from lib.core.style import Style
+
+    return Style.default()
+
+
 @dataclass(frozen=True)
 class RenderTemplate:
-    """Immutable combination of :class:`RenderStyle` and :class:`PageConfig`.
+    """Immutable combination of unified style and :class:`PageConfig`.
 
     Pass a :class:`RenderTemplate` to renderer functions to fully control the
     output appearance and canvas size without touching global state.
@@ -502,13 +515,21 @@ class RenderTemplate:
         with ``dataclasses.replace(tmpl, page=PageConfig.a3())``.
     """
 
-    style: RenderStyle = field(default_factory=RenderStyle.default)
+    style: RenderStyle = field(default_factory=_default_template_style)
     page: PageConfig = field(default_factory=PageConfig.default)
+
+    def __post_init__(self) -> None:
+        if type(self.style) is RenderStyle:
+            warnings.warn(
+                "RenderStyle is deprecated and will be removed in a future release; use Style instead.",
+                DeprecationWarning,
+                stacklevel=3,
+            )
 
     @classmethod
     def default(cls) -> "RenderTemplate":
-        """Return a template with :meth:`RenderStyle.default` and A1 portrait."""
-        return cls(style=RenderStyle.default(), page=PageConfig.default())
+        """Return a template with :meth:`Style.default` and A1 portrait."""
+        return cls(style=_default_template_style(), page=PageConfig.default())
 
     @classmethod
     def from_style(cls, style: RenderStyle, page: Optional[PageConfig] = None) -> "RenderTemplate":

@@ -22,16 +22,18 @@ from pathlib import Path
 
 from pyschem import (
     NetLabel,
+    BoxStyle,
     NetLabelStyle,
     PageConfig,
     Part,
-    RenderStyle,
+    PinStyle,
     RenderTemplate,
+    Style,
     Schematic,
     SymbolStyle,
+    TextPlacementStyle,
     WireStyle,
     configure_default_symbols,
-    connect,
 )
 
 # ---------------------------------------------------------------------------
@@ -86,27 +88,9 @@ sch.place(q2, x=155, y=50)
 sch.place(r5, x=155, y=110)
 
 # ---------------------------------------------------------------------------
-# Wiring (R uses numeric pins; PNP uses B/C/E)
+# Wiring (intentionally cleared per request)
 # ---------------------------------------------------------------------------
-
-# Inputs
-connect(nl_a.label_pin, r1.pin("1"))
-connect(nl_b.label_pin, r2.pin("1"))
-
-# First-stage drive
-connect(r1.pin("2"), q1.pin("B"))
-connect(r2.pin("2"), q1.pin("B"))
-connect(nl_vcc.label_pin, q1.pin("E"))
-connect(q1.pin("B"), r4.pin("1"))
-connect(r4.pin("2"), nl_gnd.label_pin)
-
-# Inter-stage and output stage
-connect(q1.pin("C"), r3.pin("1"))
-connect(r3.pin("2"), q2.pin("B"))
-connect(q2.pin("B"), r5.pin("1"))
-connect(r5.pin("2"), nl_gnd.label_pin)
-connect(nl_vcc.label_pin, q2.pin("E"))
-connect(q2.pin("C"), nl_a_and_b.label_pin)
+# No connect(...) calls here.
 
 # ---------------------------------------------------------------------------
 # Export
@@ -116,10 +100,14 @@ svg_path = "out/transistor_and_gate.svg"
 wire_color = "#1565c0"
 page = PageConfig.a1(landscape=True)
 render_template = RenderTemplate.from_style(
-    RenderStyle(
+    Style(
         wire=WireStyle(color=wire_color),
         label_net=NetLabelStyle(color=wire_color),
+        box=BoxStyle(stroke="#d32f2f"),
+        pin=PinStyle(stub_stroke="#d32f2f", key_fill="#000000", value_fill="#000000", font_value=8.0),
         symbol=SymbolStyle(scale=6.0),
+        value_text=TextPlacementStyle(position="center"),
+        value_font_size=8.0,
         canvas_scale_mode="auto",
         canvas_scale_min=1.0,
         canvas_scale_max=6.0,

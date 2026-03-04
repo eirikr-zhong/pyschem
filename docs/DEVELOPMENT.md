@@ -5,9 +5,10 @@
 1. [Project Structure](#project-structure)
 2. [Naming Conventions](#naming-conventions)
 3. [Code Style](#code-style)
-4. [Commit Conventions](#commit-conventions)
-5. [Testing](#testing)
-6. [Branch Strategy](#branch-strategy)
+4. [Unified Style System](#unified-style-system)
+5. [Commit Conventions](#commit-conventions)
+6. [Testing](#testing)
+7. [Branch Strategy](#branch-strategy)
 
 ---
 
@@ -89,6 +90,33 @@ Order (enforced by ruff/isort):
 3. Internal (`lib.*`)
 
 No wildcard imports (`from x import *`).
+
+---
+
+## Unified Style System
+
+PySchem now uses one `Style` model for layout + rendering controls.
+
+Resolution precedence:
+
+1. `Style.default()`
+2. `template.style`
+3. `part.style`
+
+So effective precedence is: `part.style > template.style > Style.default()`.
+
+Use `Style` for both template-level and part-level overrides:
+
+```python
+from pyschem import RenderTemplate, Style, TextPlacementStyle
+
+template = RenderTemplate.from_style(
+    Style(ref_text=TextPlacementStyle(visible=False))
+)
+```
+
+Legacy `RenderStyle` is still supported for compatibility but is deprecated.
+See `docs/STYLE_MIGRATION.md` for full old-to-new field mapping.
 
 ---
 

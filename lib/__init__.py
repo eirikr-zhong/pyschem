@@ -30,6 +30,7 @@ from lib.core import (
     Schematic,
     Sheet,
     Style,
+    resolve_style,
     WireStyle,
     connect,
     derive_nets,
@@ -57,6 +58,7 @@ __all__ = [
     "NetLabel",
     "Style",
     "DefaultPlacementStyle",
+    "resolve_style",
     "PageConfig",
     # Render style / template
     "WireStyle",

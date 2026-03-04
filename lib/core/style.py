@@ -1,8 +1,9 @@
-"""Style dataclass for positioning fields."""
+"""Unified schematic Style dataclass (placement + rendering controls)."""
 
 from dataclasses import dataclass
 from typing import Optional
 
+from lib.core.render_style import RenderStyle
 from lib.errors import StyleValidationError
 
 VALID_ROTATIONS = {0, 90, 180, 270}
@@ -10,15 +11,18 @@ VALID_ANCHORS = {"center", "left", "right", "top", "bottom"}
 
 
 @dataclass
-class Style:
-    """Style object for component positioning.
+class Style(RenderStyle):
+    """Unified style object for placement + rendering.
 
-    Currently only supports positioning fields:
+    Placement fields:
     - x, y: absolute coordinates in mm
     - anchor: anchor point (center/left/right/top/bottom)
     - rotation: rotation angle (0/90/180/270)
     - locked: whether position is fixed
-    - z_index: z-order (reserved for future use)
+    - z_index: z-order
+
+    Rendering/text/net/canvas fields are inherited from :class:`RenderStyle`.
+    Use :meth:`Style.default` to obtain fully resolved, no-None render defaults.
     """
 
     x: Optional[float] = None

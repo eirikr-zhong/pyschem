@@ -17,6 +17,7 @@ from lib.core.render_style import (
 )
 from lib.core.schematic import Schematic, Sheet
 from lib.core.style import DefaultPlacementStyle, Style
+from lib.core.style_resolver import resolve_style
 
 __all__ = [
     "Schematic",
@@ -27,6 +28,7 @@ __all__ = [
     "NetLabel",
     "Style",
     "DefaultPlacementStyle",
+    "resolve_style",
     "PageConfig",
     "connect",
     "derive_nets",

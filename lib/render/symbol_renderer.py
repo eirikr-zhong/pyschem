@@ -31,6 +31,8 @@ class _DrawStyle:
     symbol_scale: float = 1.0
     ref_text: TextPlacementStyle = field(default_factory=TextPlacementStyle.default_ref)
     value_text: TextPlacementStyle = field(default_factory=TextPlacementStyle.default_value)
+    pin_name_visible: bool = True
+    pin_value_visible: bool = True
 
 
 class SymbolRenderer:
@@ -48,6 +50,8 @@ class SymbolRenderer:
         symbol_scale: float = 1.0,
         ref_text_style: TextPlacementStyle | None = None,
         value_text_style: TextPlacementStyle | None = None,
+        pin_name_visible: bool = True,
+        pin_value_visible: bool = True,
     ) -> None:
         ref_default = TextPlacementStyle.default_ref()
         value_default = TextPlacementStyle.default_value()
@@ -69,6 +73,8 @@ class SymbolRenderer:
                 if value_text_style is not None
                 else value_default
             ),
+            pin_name_visible=bool(pin_name_visible),
+            pin_value_visible=bool(pin_value_visible),
         )
 
     # ------------------------------------------------------------------
@@ -321,7 +327,14 @@ class SymbolRenderer:
                 stroke_width=self._style.pin_stub_width,
             )
 
-        label = pin.name if pin.name and pin.name != "~" else pin.number
+        pin_name = pin.name if pin.name and pin.name != "~" else ""
+        pin_value = pin.number if pin.number and pin.number != "~" else ""
+        if self._style.pin_name_visible and pin_name:
+            label = pin_name
+        elif self._style.pin_value_visible and pin_value:
+            label = pin_value
+        else:
+            label = ""
         if not label or label == "~":
             return
 
