@@ -9,6 +9,7 @@
 5. [Commit Conventions](#commit-conventions)
 6. [Testing](#testing)
 7. [Branch Strategy](#branch-strategy)
+8. [Troubleshooting Notes](#troubleshooting-notes)
 
 ---
 
@@ -221,3 +222,9 @@ Use `tmp_path` (pytest built-in) for files generated during tests.
 - Coverage must not drop below the configured threshold
 - Squash-merge preferred for feature branches to keep history clean
 - At least one reviewer before merge (when team > 1)
+
+---
+
+## Troubleshooting Notes
+
+- Q1.B routing branch readability issue: `docs/Q1B_ROUTING_TROUBLESHOOTING.md`
