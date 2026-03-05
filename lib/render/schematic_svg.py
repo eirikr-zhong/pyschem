@@ -79,12 +79,6 @@ The canvas dimensions come from a :class:`~lib.core.page.PageConfig` passed
 in by the caller.  When no ``PageConfig`` is provided the renderer uses
 **A1 portrait** (1684 × 2384 px at 96 dpi) as the default.
 
-Canvas output scaling
----------------------
-Final SVG ``width``/``height`` are multiplied by an effective output scale.
-In ``fixed`` mode this uses ``Style.canvas_scale``.  In ``auto`` mode
-the renderer derives a scale from style font sizes and a readability target,
-then clamps to configured min/max bounds.
 """
 
 from __future__ import annotations
@@ -98,7 +92,6 @@ from lib.core.render_style import (
     HaloStyle,
     NetLabelStyle,
     PinStyle,
-    SymbolStyle,
     RenderTemplate as _RenderTemplateT,
     TextPlacementStyle,
     WireStyle,
@@ -125,6 +118,7 @@ _PARTS_PER_COL = 4      # max parts per column before wrapping to a new column
 
 # Obstacle avoidance
 _OBSTACLE_CLEARANCE = 1  # reduced from 6 to allow tighter routing near components
+_SYMBOL_AMPLIFICATION = 6.0
 
 # Cross-net wire avoidance
 _WIRE_SEG_CLEARANCE = 4   # px clearance zone around each drawn wire segment
@@ -159,56 +153,10 @@ def _style_value(value: _T | None, *, field_name: str) -> _T:
     return value
 
 
-def _clamp(value: float, lower: float, upper: float) -> float:
-    return max(lower, min(upper, value))
-
-
-def _effective_output_scale(
-    style: Style,
-    *,
-    font_ref: float,
-    font_net: float,
-    font_value: float,
-    font_pin: float,
-    ln_font_size: float,
-) -> float:
-    """Resolve final output scale from Style fixed/auto settings."""
-    mode_raw = (_style_value(style.canvas_scale_mode, field_name="canvas_scale_mode") or "auto")
-    mode = mode_raw.strip().lower()
-    if mode not in {"fixed", "auto"}:
-        mode = "auto"
-
-    scale_min = float(_style_value(style.canvas_scale_min, field_name="canvas_scale_min"))
-    scale_max = float(_style_value(style.canvas_scale_max, field_name="canvas_scale_max"))
-    if scale_min > scale_max:
-        scale_min, scale_max = scale_max, scale_min
-    scale_min = max(0.1, scale_min)
-    scale_max = max(scale_min, scale_max)
-
-    if mode == "fixed":
-        raw_scale = float(_style_value(style.canvas_scale, field_name="canvas_scale"))
-    else:
-        target_font_px = max(
-            0.1,
-            float(
-                _style_value(
-                    style.canvas_target_min_font_px,
-                    field_name="canvas_target_min_font_px",
-                )
-            ),
-        )
-        # Conservative baseline: smallest effective text size should meet target.
-        baseline_font_px = max(0.1, min(font_net, font_ref, font_value, font_pin, ln_font_size))
-        raw_scale = target_font_px / baseline_font_px
-
-    return _clamp(raw_scale, scale_min, scale_max)
-
-
 def _symbol_renderer_from_style(style: Style) -> SymbolRenderer:
     """Build a symbol renderer configured from a resolved unified style."""
     box_style = style.box or BoxStyle.default()
     pin_style = style.pin or PinStyle.default()
-    symbol_style = style.symbol or SymbolStyle.default()
     ref_text_style = style.ref_text or TextPlacementStyle.default_ref()
     value_text_style = style.value_text or TextPlacementStyle.default_value()
     return SymbolRenderer(
@@ -220,7 +168,6 @@ def _symbol_renderer_from_style(style: Style) -> SymbolRenderer:
         pin_stub_width=_style_value(pin_style.stub_stroke_width, field_name="pin.stub_stroke_width"),
         pin_text_fill=_style_value(pin_style.key_fill, field_name="pin.key_fill"),
         value_text_fill=_style_value(pin_style.value_fill, field_name="pin.value_fill"),
-        symbol_scale=max(0.1, float(_style_value(symbol_style.scale, field_name="symbol.scale"))),
         ref_text_style=ref_text_style,
         value_text_style=value_text_style,
         pin_name_visible=_style_value(pin_style.pin_name_visible, field_name="pin.pin_name_visible"),
@@ -301,6 +248,42 @@ def _any_obstacle_hit(
     return any(o.segment_hits(ax, ay, bx, by) for o in obstacles)
 
 
+def _moves_outward_from_obstacle(
+    obstacle: object,
+    from_pt: tuple[float, float],
+    to_pt: tuple[float, float],
+) -> bool:
+    """Return True if movement goes from an interior endpoint outward."""
+    ox0 = float(getattr(obstacle, "x0"))
+    oy0 = float(getattr(obstacle, "y0"))
+    ox1 = float(getattr(obstacle, "x1"))
+    oy1 = float(getattr(obstacle, "y1"))
+    fx, fy = from_pt
+    tx, ty = to_pt
+
+    if abs(fx - tx) < 0.5:
+        if oy0 <= ty <= oy1:
+            return False
+        moving_up = ty < fy
+        dist_top = abs(fy - oy0)
+        dist_bottom = abs(oy1 - fy)
+        if moving_up:
+            return dist_top <= dist_bottom + 0.5
+        return dist_bottom <= dist_top + 0.5
+
+    if abs(fy - ty) < 0.5:
+        if ox0 <= tx <= ox1:
+            return False
+        moving_left = tx < fx
+        dist_left = abs(fx - ox0)
+        dist_right = abs(ox1 - fx)
+        if moving_left:
+            return dist_left <= dist_right + 0.5
+        return dist_right <= dist_left + 0.5
+
+    return False
+
+
 def _can_draw_straight(
     p0: tuple[float, float],
     p1: tuple[float, float],
@@ -320,42 +303,12 @@ def _can_draw_straight(
     if not blocking:
         return True
 
-    def _moves_outward_from(obstacle: object, from_pt: tuple[float, float], to_pt: tuple[float, float]) -> bool:
-        ox0 = float(getattr(obstacle, "x0"))
-        oy0 = float(getattr(obstacle, "y0"))
-        ox1 = float(getattr(obstacle, "x1"))
-        oy1 = float(getattr(obstacle, "y1"))
-        fx, fy = from_pt
-        tx, ty = to_pt
-
-        if abs(fx - tx) < 0.5:
-            if oy0 <= ty <= oy1:
-                return False
-            moving_up = ty < fy
-            dist_top = abs(fy - oy0)
-            dist_bottom = abs(oy1 - fy)
-            if moving_up:
-                return dist_top <= dist_bottom + 0.5
-            return dist_bottom <= dist_top + 0.5
-
-        if abs(fy - ty) < 0.5:
-            if ox0 <= tx <= ox1:
-                return False
-            moving_left = tx < fx
-            dist_left = abs(fx - ox0)
-            dist_right = abs(ox1 - fx)
-            if moving_left:
-                return dist_left <= dist_right + 0.5
-            return dist_right <= dist_left + 0.5
-
-        return False
-
     for obstacle in blocking:
         p0_inside = _obstacle_contains_point(obstacle, x0, y0)
         p1_inside = _obstacle_contains_point(obstacle, x1, y1)
-        if p0_inside and _moves_outward_from(obstacle, p0, p1):
+        if p0_inside and _moves_outward_from_obstacle(obstacle, p0, p1):
             continue
-        if p1_inside and _moves_outward_from(obstacle, p1, p0):
+        if p1_inside and _moves_outward_from_obstacle(obstacle, p1, p0):
             continue
         return False
 
@@ -550,12 +503,6 @@ def render_schematic_svg(
     halo_opacity: str = _style_value(halo_style.opacity, field_name="halo.opacity")
     halo_pad: float = _style_value(halo_style.pad, field_name="halo.pad")
 
-    canvas_symbol_style = canvas_style.symbol or SymbolStyle.default()
-    symbol_scale = max(
-        0.1,
-        float(_style_value(canvas_symbol_style.scale, field_name="symbol.scale")),
-    )
-
     background: str = _style_value(canvas_style.background, field_name="background")
     font_ref: float = _style_value(
         pin_style.font_ref if pin_style.font_ref is not None else canvas_style.ref_font_size,
@@ -570,15 +517,6 @@ def render_schematic_svg(
         pin_style.font_pin if pin_style.font_pin is not None else canvas_style.pin_font_size,
         field_name="pin_font_size",
     )
-    output_scale = _effective_output_scale(
-        canvas_style,
-        font_ref=font_ref,
-        font_net=font_net,
-        font_value=font_value,
-        font_pin=font_pin,
-        ln_font_size=ln_font_size,
-    )
-
     # Resolve canvas dimensions — explicit page > template.page > legacy w/h > default
     if page is not None:
         canvas_w = page.width
@@ -852,7 +790,8 @@ def render_schematic_svg(
     occupied_label_boxes: list[tuple[float, float, float, float]] = []
     extra_label_clearance = max(
         0.0,
-        max(font_ref, font_value, font_pin) * 0.5 + max(0.0, symbol_scale - 1.0) * font_pin
+        max(font_ref, font_value, font_pin) * 0.5
+        + (_SYMBOL_AMPLIFICATION - 1.0) * font_pin,
     )
     flag_obstacles: list[_Obstacle] = list(obstacles)
     if extra_label_clearance > 0.0:
@@ -979,7 +918,7 @@ def render_schematic_svg(
         )
 
     # --- Phase 5: apply fit-to-content viewBox -----------------------------
-    return canvas.to_svg_fit(margin=_MARGIN, output_scale=output_scale)
+    return canvas.to_svg_fit(margin=_MARGIN)
 
 
 # ---------------------------------------------------------------------------
@@ -1283,6 +1222,46 @@ def _extract_wire_segs_from_elements(
             x1, y1, x2, y2 = (float(v) for v in m.groups())
             segs.append(_WireSegment(x1, y1, x2, y2))
     return segs
+
+
+def _pick_first_horizontal_blocker(
+    start_x: float,
+    end_x: float,
+    blocking: list[_Obstacle],
+) -> _Obstacle:
+    """Pick the first blocker encountered from *start_x* toward *end_x*."""
+    if not blocking:
+        raise ValueError("blocking must not be empty")
+    moving_left = end_x < start_x
+    if moving_left:
+        return min(
+            blocking,
+            key=lambda obstacle: (max(0.0, start_x - obstacle.x1), -obstacle.x1),
+        )
+    return min(
+        blocking,
+        key=lambda obstacle: (max(0.0, obstacle.x0 - start_x), obstacle.x0),
+    )
+
+
+def _pick_first_vertical_blocker(
+    start_y: float,
+    end_y: float,
+    blocking: list[_Obstacle],
+) -> _Obstacle:
+    """Pick the first blocker encountered from *start_y* toward *end_y*."""
+    if not blocking:
+        raise ValueError("blocking must not be empty")
+    moving_up = end_y < start_y
+    if moving_up:
+        return min(
+            blocking,
+            key=lambda obstacle: (max(0.0, start_y - obstacle.y1), -obstacle.y1),
+        )
+    return min(
+        blocking,
+        key=lambda obstacle: (max(0.0, obstacle.y0 - start_y), obstacle.y0),
+    )
 
 
 def _draw_wire_net(
@@ -1595,19 +1574,31 @@ def _choose_trunk_x(
         add_candidate(median_x + delta * step)
         add_candidate(median_x - delta * step)
 
+    # Smart seeds around each pin and around blockers that intersect trunk span.
+    for px, _ in pts:
+        add_candidate(px + step)
+        add_candidate(px - step)
+
+    for obstacle in obstacles:
+        if obstacle.y1 < y_min - 0.5 or obstacle.y0 > y_max + 0.5:
+            continue
+        add_candidate(obstacle.x0 - step)
+        add_candidate(obstacle.x1 + step)
+
     if not candidates:
         return median_x  # fallback — best effort
 
-    def stub_block_stats(tx: float) -> tuple[int, int, float]:
-        """Return (hard_blocks, all_blocks, bend_cost) for stubs at *tx*.
+    def _can_join_stub_on_trunk(tx: float, py: float, detour_y: float) -> bool:
+        if not (y_min - 0.5 <= detour_y <= y_max + 0.5):
+            return False
+        return not _any_obstacle_hit(obstacles, tx, detour_y, tx, py)
 
-        hard_blocks: stub blocked by obstacles that do not contain endpoint.
-        all_blocks: any blocked stub.
-        bend_cost: rough bend estimate used as a readability tie-break.
-        """
+    def stub_route_penalty(tx: float) -> tuple[int, int, float, float]:
+        """Return (hard_blocks, all_blocks, backtrack_count, backtrack_depth_sum)."""
         hard_blocks = 0
         all_blocks = 0
-        bend_cost = 0.0
+        backtrack_count = 0.0
+        backtrack_depth_sum = 0.0
         for px, py in pts:
             if abs(px - tx) <= 0.5:
                 continue
@@ -1616,12 +1607,25 @@ def _choose_trunk_x(
                 continue
             all_blocks += 1
             endpoint_only = all(_obstacle_contains_point(o, px, py) for o in blocking)
-            if endpoint_only:
-                bend_cost += 1.0
-            else:
+            if not endpoint_only:
                 hard_blocks += 1
-                bend_cost += 2.0
-        return hard_blocks, all_blocks, bend_cost
+
+            first_blocker = _pick_first_horizontal_blocker(px, tx, blocking)
+            detour_y_top = first_blocker.y0 - _OBSTACLE_CLEARANCE
+            detour_y_bot = first_blocker.y1 + _OBSTACLE_CLEARANCE
+            detour_options = [detour_y_top, detour_y_bot]
+            best_detour_y = min(
+                detour_options,
+                key=lambda candidate: (
+                    0 if _can_join_stub_on_trunk(tx, py, candidate) else 1,
+                    abs(candidate - py),
+                ),
+            )
+            if not _can_join_stub_on_trunk(tx, py, best_detour_y):
+                backtrack_count += 1.0
+                backtrack_depth_sum += abs(py - best_detour_y)
+
+        return hard_blocks, all_blocks, backtrack_count, backtrack_depth_sum
 
     # For 3-pin branch nets, if exactly one endpoint is in obstacle clearance,
     # bias trunk choice to stay near that constrained endpoint.
@@ -1639,27 +1643,38 @@ def _choose_trunk_x(
                 add_candidate(anchor_x + delta * step)
                 add_candidate(anchor_x - delta * step)
 
-    def score(tx: float) -> tuple[float, float, float, float, float, float]:
+    def score(tx: float) -> tuple[float, float, float, float, float, float, float, float]:
         constrained_on_trunk = sum(
             1
             for px, py in pts
             if abs(px - tx) <= 0.5
             and any(isinstance(o, _Obstacle) and _obstacle_contains_point(o, px, py) for o in obstacles)
         )
-        hard_blocks, all_blocks, bend_cost = stub_block_stats(tx)
+        hard_blocks, all_blocks, backtrack_count, backtrack_depth_sum = stub_route_penalty(tx)
         total_stub_len = sum(abs(px - tx) for px, _ in pts)
         anchor_bias = abs(tx - anchor_x) if anchor_x is not None else 0.0
         return (
             float(constrained_on_trunk),
             float(hard_blocks),
             float(all_blocks),
+            backtrack_count,
+            backtrack_depth_sum,
             anchor_bias,
-            bend_cost,
             total_stub_len,
             abs(tx - median_x),
         )
 
-    return min(candidates, key=score)
+    scored_candidates = [(score(tx), tx) for tx in candidates]
+    clear_backtrack_free = [
+        (sc, tx) for sc, tx in scored_candidates
+        if sc[1] <= 0.0 and sc[2] <= 0.0 and sc[3] <= 0.0
+    ]
+    if clear_backtrack_free:
+        return min(
+            clear_backtrack_free,
+            key=lambda item: (item[0][5], item[0][6], item[0][7]),
+        )[1]
+    return min(scored_candidates, key=lambda item: item[0])[1]
 
 
 def _draw_vertical_avoiding(
@@ -1848,7 +1863,7 @@ def _draw_horizontal_stub(
         )
         return
 
-    obs = blocking[0]
+    obs = _pick_first_horizontal_blocker(px, trunk_x, blocking)
     # Detour above or below the obstacle
     gap = _OBSTACLE_CLEARANCE
     detour_y_top = obs.y0 - gap
@@ -1862,11 +1877,23 @@ def _draw_horizontal_stub(
             return False
         return not _any_obstacle_hit(obstacles, trunk_x, detour_y, trunk_x, py)
 
-    options = [detour_y_top, detour_y_bot]
+    def _detour_segments_clear(detour_y: float) -> bool:
+        return (
+            not _any_obstacle_hit(obstacles, px, py, px, detour_y)
+            and not _any_obstacle_hit(obstacles, px, detour_y, trunk_x, detour_y)
+        )
+
+    detour_candidates = [detour_y_top, detour_y_bot]
+    if trunk_y_span is not None:
+        trunk_y_min, trunk_y_max = trunk_y_span
+        detour_candidates.extend([trunk_y_min, trunk_y_max])
+    deduped_candidates = list(dict.fromkeys(detour_candidates))
     dy = min(
-        options,
+        deduped_candidates,
         key=lambda candidate: (
+            0 if _detour_segments_clear(candidate) else 1,
             0 if _can_join_trunk_without_backtrack(candidate) else 1,
+            0.0 if _can_join_trunk_without_backtrack(candidate) else abs(candidate - py),
             abs(candidate - py),
         ),
     )
@@ -1875,15 +1902,16 @@ def _draw_horizontal_stub(
     # 3-segment path: (px,py) → (px,dy) → (trunk_x,dy) → (trunk_x,py)
     # If detour_y already intersects a clear trunk segment, stop there to avoid
     # drawing a local backtracking rectangle near the destination pin.
-    canvas.line(
-        px, py, px, dy,
-        stroke=wire_color, stroke_width=wire_width, stroke_dasharray=wire_dash
-    )
+    if abs(py - dy) > 0.5:
+        canvas.line(
+            px, py, px, dy,
+            stroke=wire_color, stroke_width=wire_width, stroke_dasharray=wire_dash
+        )
     canvas.line(
         px, dy, trunk_x, dy,
         stroke=wire_color, stroke_width=wire_width, stroke_dasharray=wire_dash
     )
-    if not join_without_backtrack:
+    if not join_without_backtrack and abs(py - dy) > 0.5:
         canvas.line(
             trunk_x, dy, trunk_x, py,
             stroke=wire_color, stroke_width=wire_width, stroke_dasharray=wire_dash
@@ -1937,19 +1965,14 @@ def _draw_manhattan_wire(
                                wire_color=wire_color, wire_width=wire_width, wire_dash=wire_dash)
         return
 
-    bend_h = (x1, y0)  # bend point for H-first route
-    bend_v = (x0, y1)  # bend point for V-first route
+    h_first_blocked = _any_obstacle_hit(obstacles, x0, y0, x1, y0)
+    h_first_clear = not h_first_blocked
+    h_second_clear = h_first_clear and not _any_obstacle_hit(obstacles, x1, y0, x1, y1)
+    v_first_blocked = _any_obstacle_hit(obstacles, x0, y0, x0, y1)
+    v_first_clear = not v_first_blocked
+    v_second_clear = v_first_clear and not _any_obstacle_hit(obstacles, x0, y1, x1, y1)
 
-    h_ok = (
-        not _any_obstacle_hit(obstacles, x0, y0, x1, y0)
-        and not _any_obstacle_hit(obstacles, x1, y0, x1, y1)
-    )
-    v_ok = (
-        not _any_obstacle_hit(obstacles, x0, y0, x0, y1)
-        and not _any_obstacle_hit(obstacles, x0, y1, x1, y1)
-    )
-
-    if h_ok:
+    if h_first_clear and h_second_clear:
         canvas.line(
             x0, y0, x1, y0,
             stroke=wire_color, stroke_width=wire_width, stroke_dasharray=wire_dash
@@ -1960,7 +1983,7 @@ def _draw_manhattan_wire(
         )
         return
 
-    if v_ok:
+    if v_first_clear and v_second_clear:
         canvas.line(
             x0, y0, x0, y1,
             stroke=wire_color, stroke_width=wire_width, stroke_dasharray=wire_dash
@@ -1971,15 +1994,19 @@ def _draw_manhattan_wire(
         )
         return
 
-    # Both L-routes blocked → detour around the first blocking obstacle
     blocking: list[_Obstacle] = []
-    for o in obstacles:
-        if (o.segment_hits(x0, y0, x1, y0) or o.segment_hits(x1, y0, x1, y1)
-                or o.segment_hits(x0, y0, x0, y1) or o.segment_hits(x0, y1, x1, y1)):
-            blocking.append(o)
+    for obstacle in obstacles:
+        if (
+            obstacle.segment_hits(x0, y0, x1, y0)
+            or obstacle.segment_hits(x1, y0, x1, y1)
+            or obstacle.segment_hits(x0, y0, x0, y1)
+            or obstacle.segment_hits(x0, y1, x1, y1)
+        ):
+            blocking.append(obstacle)
 
     if not blocking:
-        # Nothing actually blocks — fall back to H-first
+        # No obstacle consistently blocks either L-route segment.
+        # Preserve historical H-first fallback for deterministic output.
         canvas.line(
             x0, y0, x1, y0,
             stroke=wire_color, stroke_width=wire_width, stroke_dasharray=wire_dash
@@ -1990,6 +2017,42 @@ def _draw_manhattan_wire(
         )
         return
 
+    def _route_h_first_with_avoidance() -> None:
+        _draw_segment_avoiding(
+            canvas, x0, y0, x1, y0, obstacles,
+            wire_color=wire_color, wire_width=wire_width, wire_dash=wire_dash,
+        )
+        _draw_segment_avoiding(
+            canvas, x1, y0, x1, y1, obstacles,
+            wire_color=wire_color, wire_width=wire_width, wire_dash=wire_dash,
+        )
+
+    def _route_v_first_with_avoidance() -> None:
+        _draw_segment_avoiding(
+            canvas, x0, y0, x0, y1, obstacles,
+            wire_color=wire_color, wire_width=wire_width, wire_dash=wire_dash,
+        )
+        _draw_segment_avoiding(
+            canvas, x0, y1, x1, y1, obstacles,
+            wire_color=wire_color, wire_width=wire_width, wire_dash=wire_dash,
+        )
+
+    if h_first_clear and not v_first_clear:
+        _route_h_first_with_avoidance()
+        return
+    if v_first_clear and not h_first_clear:
+        _route_v_first_with_avoidance()
+        return
+    if h_first_clear and v_first_clear:
+        h_rank = (0 if h_second_clear else 1, abs(y1 - y0), abs(x1 - x0))
+        v_rank = (0 if v_second_clear else 1, abs(x1 - x0), abs(y1 - y0))
+        if h_rank <= v_rank:
+            _route_h_first_with_avoidance()
+        else:
+            _route_v_first_with_avoidance()
+        return
+
+    # Both L-routes blocked → detour around the first blocking obstacle
     obs = blocking[0]
     gap = _OBSTACLE_CLEARANCE
 
@@ -2048,14 +2111,26 @@ def _draw_segment_avoiding(
         if wire_dash is None
         else wire_dash
     )
-    if not _any_obstacle_hit(obstacles, x0, y0, x1, y1):
+    if _can_draw_straight((x0, y0), (x1, y1), obstacles):
         canvas.line(
             x0, y0, x1, y1,
             stroke=wire_color, stroke_width=wire_width, stroke_dasharray=wire_dash
         )
         return
 
-    blocking = [o for o in obstacles if o.segment_hits(x0, y0, x1, y1)]
+    blocking = [
+        obstacle
+        for obstacle in obstacles
+        if obstacle.segment_hits(x0, y0, x1, y1)
+        and not (
+            _obstacle_contains_point(obstacle, x0, y0)
+            and _moves_outward_from_obstacle(obstacle, (x0, y0), (x1, y1))
+        )
+        and not (
+            _obstacle_contains_point(obstacle, x1, y1)
+            and _moves_outward_from_obstacle(obstacle, (x1, y1), (x0, y0))
+        )
+    ]
     if not blocking:
         canvas.line(
             x0, y0, x1, y1,
@@ -2063,11 +2138,11 @@ def _draw_segment_avoiding(
         )
         return
 
-    obs = blocking[0]
     gap = _OBSTACLE_CLEARANCE
 
     # Horizontal segment blocked → detour above or below
     if abs(y0 - y1) < 0.5:
+        obs = _pick_first_horizontal_blocker(x0, x1, blocking)
         dy_top = obs.y0 - gap
         dy_bot = obs.y1 + gap
         dy = dy_top if abs(y0 - dy_top) <= abs(y0 - dy_bot) else dy_bot
@@ -2087,6 +2162,7 @@ def _draw_segment_avoiding(
         return
 
     # Vertical segment blocked → detour left or right
+    obs = _pick_first_vertical_blocker(y0, y1, blocking)
     dx_left = obs.x0 - gap
     dx_right = obs.x1 + gap
     dx = dx_left if abs(x0 - dx_left) <= abs(x0 - dx_right) else dx_right
@@ -2751,28 +2827,18 @@ class _TrackingCanvas(SvgCanvas):
     # Fit-to-content serialisation
     # ------------------------------------------------------------------
 
-    def to_svg_fit(self, margin: float = 40, output_scale: float = 1.0) -> str:
+    def to_svg_fit(self, margin: float = 40) -> str:
         """Return SVG string with viewBox fitted to content + *margin*.
 
         Args:
             margin: Extra whitespace around tracked content in viewBox units.
-            output_scale: Final SVG output scaling factor. This multiplies the
-                exported ``width``/``height`` attributes while keeping logical
-                drawing coordinates unchanged.
         """
-        scale = max(0.1, float(output_scale))
-        if abs(scale - 1.0) < 1e-9:
-            scaled_width = self._width
-            scaled_height = self._height
-        else:
-            scaled_width = self._width * scale
-            scaled_height = self._height * scale
         if self._min_x == float("inf"):
             # Nothing was drawn — fall back to full-page viewBox
             header = (
                 f'<?xml version="1.0" encoding="UTF-8"?>\n'
                 f'<svg xmlns="http://www.w3.org/2000/svg"'
-                f' width="{scaled_width}" height="{scaled_height}"'
+                f' width="{self._width}" height="{self._height}"'
                 f' viewBox="0 0 {self._width} {self._height}">\n'
             )
             if self._background and self._background != "none":
@@ -2795,7 +2861,7 @@ class _TrackingCanvas(SvgCanvas):
         header = (
             f'<?xml version="1.0" encoding="UTF-8"?>\n'
             f'<svg xmlns="http://www.w3.org/2000/svg"'
-            f' width="{scaled_width}" height="{scaled_height}"'
+            f' width="{self._width}" height="{self._height}"'
             f' viewBox="{vb_x:.1f} {vb_y:.1f} {vb_w:.1f} {vb_h:.1f}">\n'
         )
         if self._background and self._background != "none":
