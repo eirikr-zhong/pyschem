@@ -558,20 +558,21 @@ class TestToWorldPoint:
 # ---------------------------------------------------------------------------
 
 class TestPrimitiveFill:
+    @pytest.mark.parametrize("mode", ["solid", "outline", "foreground", "SOLID"])
+    def test_solid_like_fill_modes_follow_primitive_stroke(self, mode):
+        result = SymbolRenderer(primitive_stroke="#cc0000")._primitive_fill(mode)
+        assert result == "#cc0000"
+
     @pytest.mark.parametrize("mode,expected", [
         ("background", "white"),
         ("bg", "white"),
-        ("solid", "black"),
-        ("outline", "black"),
-        ("foreground", "black"),
         ("none", "none"),
         ("", "none"),
         ("other", "none"),
-        ("BACKGROUND", "white"),  # case-insensitive
-        ("SOLID", "black"),
+        ("BACKGROUND", "white"),
     ])
-    def test_fill_modes(self, mode, expected):
-        result = SymbolRenderer._primitive_fill(mode)
+    def test_background_and_none_fill_modes(self, mode, expected):
+        result = SymbolRenderer(primitive_stroke="#cc0000")._primitive_fill(mode)
         assert result == expected
 
 

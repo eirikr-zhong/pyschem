@@ -27,7 +27,9 @@ import pytest
 import lib.symbols.symbols as _sym_mod
 from lib.core.connect import connect
 from lib.core.part import NetLabel, Part
+from lib.core.render_style import BoxStyle, RenderTemplate
 from lib.core.schematic import Schematic
+from lib.core.style import Style
 from lib.symbols import configure_default_symbols
 
 
@@ -138,6 +140,14 @@ class TestSvgBody:
         sch = _make_pnp_sch()
         svg = sch.get_svg_string()
         assert ">E<" in svg
+
+    def test_pnp_arrow_fill_uses_component_symbol_colour(self):
+        """SVG-BODY-06: PNP filled arrow follows configured symbol stroke colour."""
+        sch = _make_pnp_sch()
+        template = RenderTemplate.from_style(Style(box=BoxStyle(stroke="#cc0000")))
+        svg = sch.get_svg_string(template=template)
+        assert '<polygon' in svg
+        assert 'fill="#cc0000"' in svg
 
 
 # ===========================================================================

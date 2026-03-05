@@ -560,11 +560,10 @@ class SymbolRenderer:
             cy + lx * math.sin(rad) + ly * math.cos(rad),
         )
 
-    @staticmethod
-    def _primitive_fill(fill_mode: str) -> str:
+    def _primitive_fill(self, fill_mode: str) -> str:
         mode = (fill_mode or "none").lower()
         if mode in {"background", "bg"}:
             return "white"
         if mode in {"solid", "outline", "foreground"}:
-            return "black"
+            return self._style.primitive_stroke
         return "none"
