@@ -100,3 +100,14 @@ class TestTextXmlEscaping:
         c.text(50, 50, "<val>")
         svg = c.to_svg()
         assert "&lt;val&gt;" in svg
+
+
+class TestRectRoundedCorners:
+    def test_rect_with_rx_adds_attribute(self):
+        c = SvgCanvas(width=120, height=90)
+        c.rect(10, 20, 30, 40, stroke="black", stroke_width=1, fill="none", rx=6)
+
+        svg = c.to_svg()
+
+        assert '<rect x="10" y="20" width="30" height="40"' in svg
+        assert 'rx="6"' in svg

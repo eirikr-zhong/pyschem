@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import re
 
 import pytest
 
@@ -12,7 +13,16 @@ from lib.core.render_style import RenderStyle, RenderTemplate, TextPlacementStyl
 from lib.core.schematic import Schematic
 from lib.symbols import configure_default_symbols
 from lib.core.style import Style
-from lib.render.schematic_svg import _effective_output_scale
+from lib.render.schematic_svg import (
+    _Obstacle,
+    _TrackingCanvas,
+    _draw_flag_label,
+    _draw_manhattan_wire,
+    _draw_net_label,
+    _draw_segment_avoiding,
+    _effective_output_scale,
+    _nudge_horizontal_flag_tip,
+)
 
 
 MINIMAL_DEVICE_R_SYM = '''\
@@ -206,3 +216,116 @@ class TestEffectiveOutputScale:
         scale = _effective_output_scale(s, font_ref=-1, font_net=0, font_value=0.05, font_pin=10, ln_font_size=2)
         # The smallest font is 0 (from font_net), clamped to 0.1. So 10 / 0.1 = 100
         assert scale == 100.0
+
+
+def _line_segments(canvas: _TrackingCanvas) -> list[tuple[float, float, float, float]]:
+    segments = []
+    for x1, y1, x2, y2 in re.findall(
+        r'<line x1="([^"]+)" y1="([^"]+)" x2="([^"]+)" y2="([^"]+)"',
+        "".join(canvas._elements),
+    ):
+        segments.append((float(x1), float(y1), float(x2), float(y2)))
+    return segments
+
+
+class _FlakyObstacle:
+    """Stateful obstacle used to force fallback branches deterministically."""
+
+    def __init__(self, *, true_calls: int) -> None:
+        self._true_calls = true_calls
+        self._calls = 0
+
+    def segment_hits(self, *_args) -> bool:
+        self._calls += 1
+        return self._calls <= self._true_calls
+
+
+class TestWireRoutingFallbacks:
+    def test_draw_manhattan_wire_prefers_h_first_when_clear(self):
+        canvas = _TrackingCanvas(200, 200)
+
+        _draw_manhattan_wire(canvas, (0.0, 0.0), (10.0, 10.0), obstacles=[])
+
+        assert _line_segments(canvas) == [
+            (0.0, 0.0, 10.0, 0.0),
+            (10.0, 0.0, 10.0, 10.0),
+        ]
+
+    def test_draw_manhattan_wire_falls_back_when_blocking_list_empty(self):
+        canvas = _TrackingCanvas(200, 200)
+        obstacle = _FlakyObstacle(true_calls=2)
+
+        _draw_manhattan_wire(canvas, (0.0, 0.0), (10.0, 10.0), obstacles=[obstacle])  # type: ignore[list-item]
+
+        assert _line_segments(canvas) == [
+            (0.0, 0.0, 10.0, 0.0),
+            (10.0, 0.0, 10.0, 10.0),
+        ]
+
+    def test_draw_segment_avoiding_falls_back_to_straight_line(self):
+        canvas = _TrackingCanvas(200, 200)
+        obstacle = _FlakyObstacle(true_calls=1)
+
+        _draw_segment_avoiding(canvas, 0.0, 0.0, 20.0, 0.0, [obstacle])  # type: ignore[list-item]
+
+        assert _line_segments(canvas) == [(0.0, 0.0, 20.0, 0.0)]
+
+
+class TestNetLabelAndFlagRendering:
+    def test_draw_net_label_adds_halo_and_centered_text(self):
+        canvas = _TrackingCanvas(200, 200)
+
+        _draw_net_label(canvas, 50.0, 60.0, "BUS_A")
+
+        assert len(canvas._elements) == 2
+        assert canvas._elements[0].startswith('<rect x="')
+        assert 'opacity="' in canvas._elements[0]
+        assert "BUS_A</text>" in canvas._elements[1]
+        assert 'text-anchor="middle"' in canvas._elements[1]
+
+    @pytest.mark.parametrize("side, expect_above", [("top", True), ("bottom", False)])
+    def test_draw_flag_label_supports_vertical_tags(self, side: str, expect_above: bool):
+        canvas = _TrackingCanvas(300, 300)
+
+        _draw_flag_label(canvas, 100.0, 100.0, "NET_V", side=side)
+
+        path = next(el for el in canvas._elements if el.startswith('<path d="M '))
+        m = re.search(r'd="M [^ ]+ ([^ ]+)', path)
+        assert m is not None
+        first_y = float(m.group(1))
+        assert (first_y < 100.0) is expect_above
+        assert "L 100.0 100.0" in path
+
+    def test_nudge_horizontal_flag_tip_returns_none_for_vertical_side(self):
+        nudged = _nudge_horizontal_flag_tip(
+            100.0,
+            100.0,
+            "N1",
+            side="top",
+            align_x=None,
+            obstacles=[],
+            ln_font_size=11.0,
+        )
+        assert nudged is None
+
+    def test_nudge_horizontal_flag_tip_returns_align_x_when_no_overlap(self):
+        nudged = _nudge_horizontal_flag_tip(
+            100.0,
+            100.0,
+            "N2",
+            side="left",
+            align_x=120.0,
+            obstacles=[_Obstacle(400.0, 400.0, 460.0, 460.0)],
+            ln_font_size=11.0,
+        )
+        assert nudged == 120.0
+
+
+class TestTrackingCanvasFitFallback:
+    def test_to_svg_fit_without_drawing_uses_full_page_viewbox(self):
+        canvas = _TrackingCanvas(180.0, 120.0)
+
+        svg = canvas.to_svg_fit(margin=20.0)
+
+        assert 'viewBox="0 0 180.0 120.0"' in svg
+        assert '<rect width="180.0" height="120.0" fill="white"/>' in svg

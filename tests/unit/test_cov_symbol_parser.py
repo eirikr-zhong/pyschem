@@ -13,10 +13,12 @@ from __future__ import annotations
 
 import textwrap
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from lib.symbols.symbol_parser import (
+    KicadSymVisitor,
     SymbolLibrary,
     load_library,
     parse_kicad_sym_content,
@@ -387,6 +389,26 @@ class TestSubSymbolDetection:
         assert "MyIC" in names
         assert "MyIC_0_1" not in names
 
+    def test_nested_symboldata_is_absorbed_into_parent(self):
+        """Nested non-sub-symbol blocks contribute pins/properties to parent."""
+        content = _wrap(
+            _symbol(
+                "Outer",
+                '    (symbol "Inner"\n'
+                '      (property "Footprint" "SMD:QFN-16" (at 0 0 0))\n'
+                + _pin(number="7", name="SIG") +
+                "    )\n",
+            )
+        )
+
+        symbols = parse_kicad_sym_content(content, "test")
+
+        assert len(symbols) == 1
+        outer = symbols[0]
+        assert outer.name == "Outer"
+        assert any(pin.number == "7" for pin in outer.pins)
+        assert outer.properties.get("Footprint") == "SMD:QFN-16"
+
 
 # ---------------------------------------------------------------------------
 # parse_kicad_sym_file and parse_kicad_sym_file_safe  (L546-589)
@@ -428,6 +450,20 @@ class TestParseFileApi:
         """parse_kicad_sym_content raises ValueError for malformed content."""
         with pytest.raises(ValueError, match="Failed to parse"):
             parse_kicad_sym_content("(this is bad {content}", "test")
+
+    def test_parse_content_wraps_unexpected_visitor_error(self, monkeypatch):
+        """Unexpected visitor exceptions are wrapped into ValueError."""
+        import lib.symbols.symbol_parser as parser_mod
+
+        valid = _wrap(_symbol("Dummy"))
+
+        def _boom(_self, _tree):
+            raise RuntimeError("visitor exploded")
+
+        monkeypatch.setattr(parser_mod.KicadSymVisitor, "visit", _boom)
+
+        with pytest.raises(ValueError, match="visitor exploded"):
+            parse_kicad_sym_content(valid, "BoomLib")
 
 
 # ---------------------------------------------------------------------------
@@ -558,3 +594,142 @@ class TestMultipleSymbols:
         symbols = parse_kicad_sym_content(content, "MyLib")
         for s in symbols:
             assert s.lib == "MyLib"
+
+    def test_parse_content_flattens_nested_symbol_lists(self, monkeypatch):
+        """Nested list output from visitor is flattened to SymbolData list."""
+        import lib.symbols.symbol_parser as parser_mod
+
+        valid = _wrap(_symbol("Placeholder"))
+        s1 = SymbolData(name="S1", lib="", pins=[], primitives=[], properties={})
+        s2 = SymbolData(name="S2", lib="", pins=[], primitives=[], properties={})
+
+        def _nested_symbols(_self, _tree):
+            return [s1, [s2]]
+
+        monkeypatch.setattr(parser_mod.KicadSymVisitor, "visit", _nested_symbols)
+        parsed = parse_kicad_sym_content(valid, "NestedLib")
+
+        assert [s.name for s in parsed] == ["S1", "S2"]
+        assert all(s.lib == "NestedLib" for s in parsed)
+
+
+class TestParserEdgeBranches:
+    def test_pin_without_number_is_ignored(self):
+        """Pin blocks without number field are skipped."""
+        content = _wrap(
+            _symbol(
+                "MissingNumber",
+                '    (pin passive line (at 0 0 0) (length 2.54)\n'
+                '      (name "SIG" (effects (font (size 1.27 1.27))))\n'
+                '    )\n',
+            )
+        )
+        symbols = parse_kicad_sym_content(content, "test")
+        assert symbols
+        assert symbols[0].pins == []
+
+    def test_pin_empty_number_string_is_treated_as_missing(self):
+        """Empty number string maps to None and does not create a pin."""
+        content = _wrap(
+            _symbol(
+                "EmptyNumber",
+                '    (pin passive line (at 0 0 0) (length 2.54)\n'
+                '      (name "SIG" (effects (font (size 1.27 1.27))))\n'
+                '      (number "" (effects (font (size 1.27 1.27))))\n'
+                '    )\n',
+            )
+        )
+        symbols = parse_kicad_sym_content(content, "test")
+        assert symbols
+        assert symbols[0].pins == []
+
+    def test_incomplete_circle_and_arc_are_skipped(self):
+        """Circle/arc primitives missing required geometry are omitted."""
+        content = _wrap(
+            _symbol(
+                "IncompleteShapes",
+                '    (circle\n'
+                '      (center 1 1)\n'
+                '      (stroke (width 0.1))\n'
+                '      (fill (type none))\n'
+                '    )\n'
+                '    (arc\n'
+                '      (start 0 0)\n'
+                '      (end 3 3)\n'
+                '      (stroke (width 0.1))\n'
+                '      (fill (type none))\n'
+                '    )\n',
+            )
+        )
+        symbols = parse_kicad_sym_content(content, "test")
+        assert symbols
+        assert symbols[0].primitives == []
+
+    @pytest.mark.parametrize(
+        "method_name, expected_kind",
+        [
+            ("visit_xy_expr", "xy"),
+            ("visit_start_expr", "start"),
+            ("visit_mid_expr", "mid"),
+            ("visit_end_expr", "end"),
+            ("visit_center_expr", "center"),
+        ],
+    )
+    def test_coordinate_expr_defaults_origin_for_incomplete_values(self, method_name, expected_kind):
+        visitor = KicadSymVisitor()
+        method = getattr(visitor, method_name)
+        result = method(None, [1.0])  # only one numeric token
+        assert result == {"_kind": expected_kind, "point": (0.0, 0.0)}
+
+    def test_fill_type_defaults_to_none_when_missing_identifier(self):
+        visitor = KicadSymVisitor()
+        result = visitor.visit_fill_type_expr(None, [None, []])
+        assert result == {"_kind": "fill_type", "value": "none"}
+
+    def test_symbol_def_without_name_falls_back_to_empty_name(self):
+        visitor = KicadSymVisitor()
+        symbol = visitor.visit_symbol_def(None, [[{"_kind": "property", "name": "K", "value": "V"}]])
+        assert isinstance(symbol, SymbolData)
+        assert symbol.name == ""
+        assert symbol.properties["K"] == "V"
+
+    def test_primitive_parsers_ignore_non_dict_items(self):
+        visitor = KicadSymVisitor()
+
+        poly = visitor.visit_polyline_def(
+            None,
+            [["noise", {"_kind": "pts", "points": [(0.0, 0.0), (1.0, 1.0)]}]],
+        )
+        rect = visitor.visit_rectangle_def(
+            None,
+            [["noise", {"_kind": "start", "point": (0.0, 0.0)}, {"_kind": "end", "point": (2.0, 1.0)}]],
+        )
+        circle = visitor.visit_circle_def(
+            None,
+            [["noise", {"_kind": "center", "point": (0.0, 0.0)}, {"_kind": "radius", "value": 2.0}]],
+        )
+        arc = visitor.visit_arc_def(
+            None,
+            [
+                [
+                    "noise",
+                    {"_kind": "start", "point": (0.0, 0.0)},
+                    {"_kind": "mid", "point": (1.0, 1.0)},
+                    {"_kind": "end", "point": (2.0, 0.0)},
+                ]
+            ],
+        )
+
+        assert poly is not None
+        assert rect is not None
+        assert circle is not None
+        assert arc is not None
+
+    def test_qstring_and_number_visitors_handle_malformed_tokens(self):
+        visitor = KicadSymVisitor()
+
+        unquoted = visitor.visit_qstring(SimpleNamespace(text="UNQUOTED"), [])
+        bad_number = visitor.visit_number(SimpleNamespace(text="not_a_number"), [])
+
+        assert unquoted == "UNQUOTED"
+        assert bad_number == 0.0

@@ -158,3 +158,11 @@ def test_legacy_renderstyle_path_warns_and_still_resolves() -> None:
 
     assert resolved.background == "#ffeeaa"
     assert resolved.ref_text.visible is False
+
+
+def test_resolve_style_handles_template_with_none_style() -> None:
+    template = RenderTemplate(style=None)  # type: ignore[arg-type]
+
+    resolved = resolve_style(template=template)
+
+    assert resolved == Style.default()

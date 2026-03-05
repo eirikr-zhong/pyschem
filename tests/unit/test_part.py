@@ -109,3 +109,54 @@ def test_multiple_pins_access_different_keys() -> None:
     assert len(part.pins) == 8
     for i, pin in enumerate(pins, 1):
         assert pin.key == str(i)
+
+
+def test_pin_connect_ignores_self_and_duplicate_links() -> None:
+    p1 = Pin(key="1", part_ref="U1")
+    p2 = Pin(key="2", part_ref="U2")
+
+    p1.connect(p1, p2, p2)
+
+    assert p1.connected_pins == [p2]
+    assert p2.connected_pins == [p1]
+
+
+def test_pin_disconnect_is_bidirectional_and_idempotent() -> None:
+    p1 = Pin(key="1", part_ref="U1")
+    p2 = Pin(key="2", part_ref="U2")
+    p1.connect(p2)
+
+    p1.disconnect(p2)
+    assert p1.connected_pins == []
+    assert p2.connected_pins == []
+
+    p1.disconnect(p2)
+    assert p1.connected_pins == []
+    assert p2.connected_pins == []
+
+
+def test_pin_disconnect_all_removes_all_neighbors() -> None:
+    p1 = Pin(key="1", part_ref="U1")
+    p2 = Pin(key="2", part_ref="U2")
+    p3 = Pin(key="3", part_ref="U3")
+    p1.connect(p2, p3)
+
+    p1.disconnect_all()
+
+    assert p1.connected_pins == []
+    assert p1 not in p2.connected_pins
+    assert p1 not in p3.connected_pins
+
+
+def test_part_autobind_symbol_lookup_errors_are_suppressed(monkeypatch) -> None:
+    import lib.symbols as symbols_mod
+
+    def _boom():
+        raise RuntimeError("symbol lookup failed")
+
+    monkeypatch.setattr(symbols_mod, "get_default_symbols", _boom)
+
+    part = Part(lib_id="Device:R", ref="R1")
+
+    assert part.ref == "R1"
+    assert part.available_pins == []
