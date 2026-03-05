@@ -300,6 +300,21 @@ def _any_obstacle_hit(
     return any(o.segment_hits(ax, ay, bx, by) for o in obstacles)
 
 
+def _obstacle_contains_point(obstacle: object, x: float, y: float) -> bool:
+    """Return True when *(x, y)* lies inside an obstacle-like AABB.
+
+    Works for both component obstacles and previously drawn wire-segment
+    soft obstacles, both of which expose x0/y0/x1/y1.
+    """
+    x0 = getattr(obstacle, "x0", None)
+    y0 = getattr(obstacle, "y0", None)
+    x1 = getattr(obstacle, "x1", None)
+    y1 = getattr(obstacle, "y1", None)
+    if x0 is None or y0 is None or x1 is None or y1 is None:
+        return False
+    return bool(x0 <= x <= x1 and y0 <= y <= y1)
+
+
 # ---------------------------------------------------------------------------
 # Wire-segment obstacle: treats already-drawn wire segments as soft obstacles
 # ---------------------------------------------------------------------------
@@ -1213,6 +1228,7 @@ def _draw_wire_net(
         for px, py in unique_pts:
             if abs(px - trunk_x) > 0.5:
                 _draw_horizontal_stub(canvas, px, py, trunk_x, eff_obstacles,
+                                      trunk_y_span=(trunk_y_min, trunk_y_max),
                                       wire_color=wire_color, wire_width=wire_width, wire_dash=wire_dash)
 
         # Junctions at trunk intersections:
@@ -1253,12 +1269,12 @@ def _choose_trunk_x(
     pts: list[tuple[float, float]],
     obstacles: list[_Obstacle],
 ) -> float:
-    """Pick a trunk x that avoids passing through any obstacle body.
+    """Pick a trunk x that avoids obstacle bodies and reduces visual looping.
 
-    Starts from the median x of the pin endpoints.  If the vertical segment
-    at that x would pass through an obstacle the function tries nearby x
-    values (stepping by _OBSTACLE_CLEARANCE) until a clear path is found or
-    candidates are exhausted (falls back to median).
+    For general multi-pin nets this prefers the median-x trunk while searching
+    nearby clear alternatives when blocked.  For 3-pin branch nets the scoring
+    also biases toward destination-adjacent merge points when exactly one
+    endpoint sits inside obstacle clearance (typical transistor-base branch).
     """
     median_x = sorted_xs[len(sorted_xs) // 2]
     ys = [p[1] for p in pts]
@@ -1267,16 +1283,84 @@ def _choose_trunk_x(
     def trunk_clear(tx: float) -> bool:
         return not _any_obstacle_hit(obstacles, tx, y_min, tx, y_max)
 
-    if trunk_clear(median_x):
-        return median_x
-
     step = _OBSTACLE_CLEARANCE * 2
-    for delta in range(1, 20):
-        for candidate in (median_x + delta * step, median_x - delta * step):
-            if trunk_clear(candidate):
-                return candidate
+    candidates: list[float] = []
 
-    return median_x  # fallback — best effort
+    def add_candidate(tx: float) -> None:
+        if not trunk_clear(tx):
+            return
+        if any(abs(tx - existing) <= 0.5 for existing in candidates):
+            return
+        candidates.append(tx)
+
+    # Baseline seeds: endpoint x values and median.
+    for sx in sorted_xs:
+        add_candidate(sx)
+    add_candidate(median_x)
+
+    # Nearby clear options around the median, alternating right/left.
+    for delta in range(1, 20):
+        add_candidate(median_x + delta * step)
+        add_candidate(median_x - delta * step)
+
+    if not candidates:
+        return median_x  # fallback — best effort
+
+    def stub_block_stats(tx: float) -> tuple[int, int, float]:
+        """Return (hard_blocks, all_blocks, bend_cost) for stubs at *tx*.
+
+        hard_blocks: stub blocked by obstacles that do not contain endpoint.
+        all_blocks: any blocked stub.
+        bend_cost: rough bend estimate used as a readability tie-break.
+        """
+        hard_blocks = 0
+        all_blocks = 0
+        bend_cost = 0.0
+        for px, py in pts:
+            if abs(px - tx) <= 0.5:
+                continue
+            blocking = [o for o in obstacles if o.segment_hits(px, py, tx, py)]
+            if not blocking:
+                continue
+            all_blocks += 1
+            endpoint_only = all(_obstacle_contains_point(o, px, py) for o in blocking)
+            if endpoint_only:
+                bend_cost += 1.0
+            else:
+                hard_blocks += 1
+                bend_cost += 2.0
+        return hard_blocks, all_blocks, bend_cost
+
+    # For 3-pin branch nets, if exactly one endpoint is in obstacle clearance,
+    # bias trunk choice to stay near that constrained endpoint.
+    anchor_x: float | None = None
+    if len(pts) == 3:
+        constrained_pts = [
+            (px, py)
+            for px, py in pts
+            if any(_obstacle_contains_point(o, px, py) for o in obstacles)
+        ]
+        unique_constrained = list(dict.fromkeys(constrained_pts))
+        if len(unique_constrained) == 1:
+            anchor_x = unique_constrained[0][0]
+            for delta in range(1, 20):
+                add_candidate(anchor_x + delta * step)
+                add_candidate(anchor_x - delta * step)
+
+    def score(tx: float) -> tuple[float, float, float, float, float, float]:
+        hard_blocks, all_blocks, bend_cost = stub_block_stats(tx)
+        total_stub_len = sum(abs(px - tx) for px, _ in pts)
+        anchor_bias = abs(tx - anchor_x) if anchor_x is not None else 0.0
+        return (
+            float(hard_blocks),
+            float(all_blocks),
+            anchor_bias,
+            bend_cost,
+            total_stub_len,
+            abs(tx - median_x),
+        )
+
+    return min(candidates, key=score)
 
 
 def _draw_vertical_avoiding(
@@ -1397,6 +1481,7 @@ def _draw_horizontal_stub(
     trunk_x: float,
     obstacles: list[_Obstacle],
     *,
+    trunk_y_span: tuple[float, float] | None = None,
     wire_color: str | None = None,
     wire_width: float | None = None,
     wire_dash: str | None = None,
@@ -1438,19 +1523,59 @@ def _draw_horizontal_stub(
         )
         return
 
+    # Special case: endpoint lies in obstacle clearance and the requested
+    # segment exits that clearance outward. In this constrained-pin case we
+    # prefer a direct horizontal branch to avoid local loop-like backtracking.
+    def _moves_outward_from_obs(obs: object) -> bool:
+        x0 = float(getattr(obs, "x0"))
+        x1 = float(getattr(obs, "x1"))
+        if x0 <= trunk_x <= x1:
+            return False
+        moving_left = trunk_x < px
+        dist_left = abs(px - x0)
+        dist_right = abs(x1 - px)
+        if moving_left:
+            return dist_left <= dist_right + 0.5
+        return dist_right <= dist_left + 0.5
+
+    if (
+        all(isinstance(obs, _Obstacle) for obs in blocking)
+        and all(_obstacle_contains_point(obs, px, py) for obs in blocking)
+        and all(_moves_outward_from_obs(obs) for obs in blocking)
+    ):
+        canvas.line(
+            px, py, trunk_x, py,
+            stroke=wire_color, stroke_width=wire_width, stroke_dasharray=wire_dash
+        )
+        return
+
     obs = blocking[0]
     # Detour above or below the obstacle
     gap = _OBSTACLE_CLEARANCE
     detour_y_top = obs.y0 - gap
     detour_y_bot = obs.y1 + gap
 
-    # Pick the detour direction closest to the current y
-    if abs(detour_y_top - py) <= abs(detour_y_bot - py):
-        dy = detour_y_top
-    else:
-        dy = detour_y_bot
+    def _can_join_trunk_without_backtrack(detour_y: float) -> bool:
+        if trunk_y_span is None:
+            return False
+        trunk_y_min, trunk_y_max = trunk_y_span
+        if not (trunk_y_min - 0.5 <= detour_y <= trunk_y_max + 0.5):
+            return False
+        return not _any_obstacle_hit(obstacles, trunk_x, detour_y, trunk_x, py)
+
+    options = [detour_y_top, detour_y_bot]
+    dy = min(
+        options,
+        key=lambda candidate: (
+            0 if _can_join_trunk_without_backtrack(candidate) else 1,
+            abs(candidate - py),
+        ),
+    )
+    join_without_backtrack = _can_join_trunk_without_backtrack(dy)
 
     # 3-segment path: (px,py) → (px,dy) → (trunk_x,dy) → (trunk_x,py)
+    # If detour_y already intersects a clear trunk segment, stop there to avoid
+    # drawing a local backtracking rectangle near the destination pin.
     canvas.line(
         px, py, px, dy,
         stroke=wire_color, stroke_width=wire_width, stroke_dasharray=wire_dash
@@ -1459,10 +1584,11 @@ def _draw_horizontal_stub(
         px, dy, trunk_x, dy,
         stroke=wire_color, stroke_width=wire_width, stroke_dasharray=wire_dash
     )
-    canvas.line(
-        trunk_x, dy, trunk_x, py,
-        stroke=wire_color, stroke_width=wire_width, stroke_dasharray=wire_dash
-    )
+    if not join_without_backtrack:
+        canvas.line(
+            trunk_x, dy, trunk_x, py,
+            stroke=wire_color, stroke_width=wire_width, stroke_dasharray=wire_dash
+        )
 
 
 def _draw_manhattan_wire(

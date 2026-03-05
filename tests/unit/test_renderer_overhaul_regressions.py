@@ -8,11 +8,13 @@ RO-03  High-scale labels avoid Q2 ref/VCC overlap and duplicate net text
 RO-04  Q1.B and Q2.B nets stay continuous at pin endpoints
 RO-05  Resistor pin endpoints use outer pin side
 RO-06  Q1.B/Q2.B pin labels stay outside symbol body
+RO-07  Q1.B branch avoids loop-like local backtrack
 """
 
 from __future__ import annotations
 
 import re
+from collections import defaultdict, deque
 
 import pytest
 
@@ -93,6 +95,17 @@ def _parse_text_nodes(svg: str) -> list[tuple[str, float, float, float, str]]:
     ]
 
 
+def _parse_blue_wire_lines(svg: str) -> list[tuple[float, float, float, float]]:
+    pattern = (
+        r'<line x1="([^"]+)" y1="([^"]+)" x2="([^"]+)" y2="([^"]+)"'
+        r'[^>]*stroke="#1565c0"'
+    )
+    return [
+        (float(x1), float(y1), float(x2), float(y2))
+        for x1, y1, x2, y2 in re.findall(pattern, svg)
+    ]
+
+
 def _text_box(text: str, x: float, y: float, font_size: float, anchor: str) -> tuple[float, float, float, float]:
     width = len(text) * font_size * 0.6
     height = font_size
@@ -108,6 +121,25 @@ def _text_box(text: str, x: float, y: float, font_size: float, anchor: str) -> t
 
 def _boxes_overlap(a: tuple[float, float, float, float], b: tuple[float, float, float, float]) -> bool:
     return not (a[2] <= b[0] or b[2] <= a[0] or a[3] <= b[1] or b[3] <= a[1])
+
+
+def _build_q1_b_branch_geometry() -> tuple[Schematic, Part, Part, Part]:
+    """Exact geometry from docs/Q1B_ROUTING_TROUBLESHOOTING.md."""
+    sch = Schematic("q1_b_branch_regression")
+
+    q1 = Part("Transistor_BJT:Q_PNP_CBE", ref="Q1")
+    r1 = Part("Device:R", ref="R1", value="10K")
+    r2 = Part("Device:R", ref="R2", value="10K")
+    for part in [q1, r1, r2]:
+        sch.add_part(part)
+
+    sch.place(r1, x=20, y=25)
+    sch.place(r2, x=20, y=75)
+    sch.place(q1, x=65, y=50)
+
+    sch.connect(r1.pin("1"), r2.pin("2"))
+    sch.connect(r2.pin("2"), q1.pin("B"))
+    return sch, r1, r2, q1
 
 
 class TestRendererOverhaulRegressions:
@@ -204,25 +236,68 @@ class TestRendererOverhaulRegressions:
         def _same_point(a: tuple[float, float], b: tuple[float, float]) -> bool:
             return abs(a[0] - b[0]) <= 0.2 and abs(a[1] - b[1]) <= 0.2
 
-        def _assert_continuous_endpoint(endpoint: tuple[float, float], label: str) -> None:
-            touching = [
-                seg for seg in lines
-                if _same_point((seg[0], seg[1]), endpoint) or _same_point((seg[2], seg[3]), endpoint)
-            ]
-            assert touching, f"No wire endpoint found at {label} endpoint {endpoint}"
+        def _point_on_segment(point: tuple[float, float], seg: tuple[float, float, float, float]) -> bool:
+            px, py = point
+            x1, y1, x2, y2 = seg
+            if abs(y1 - y2) <= 0.2:  # horizontal
+                if abs(py - y1) > 0.2:
+                    return False
+                lo, hi = min(x1, x2), max(x1, x2)
+                return lo - 0.2 <= px <= hi + 0.2
+            if abs(x1 - x2) <= 0.2:  # vertical
+                if abs(px - x1) > 0.2:
+                    return False
+                lo, hi = min(y1, y2), max(y1, y2)
+                return lo - 0.2 <= py <= hi + 0.2
+            return False
 
-            continued = False
-            for seg in touching:
-                other = (seg[2], seg[3]) if _same_point((seg[0], seg[1]), endpoint) else (seg[0], seg[1])
-                for other_seg in lines:
-                    if other_seg == seg:
-                        continue
-                    if _same_point((other_seg[0], other_seg[1]), other) or _same_point((other_seg[2], other_seg[3]), other):
-                        continued = True
-                        break
-                if continued:
-                    break
-            assert continued, f"{label} wire touches endpoint but does not continue into net routing"
+        split_points: set[tuple[float, float]] = set()
+        for x1, y1, x2, y2 in lines:
+            split_points.add((round(x1, 2), round(y1, 2)))
+            split_points.add((round(x2, 2), round(y2, 2)))
+
+        for h in lines:
+            hx1, hy1, hx2, hy2 = h
+            if abs(hy1 - hy2) > 0.2:
+                continue
+            h_lo, h_hi = min(hx1, hx2), max(hx1, hx2)
+            for v in lines:
+                vx1, vy1, vx2, vy2 = v
+                if abs(vx1 - vx2) > 0.2:
+                    continue
+                v_lo, v_hi = min(vy1, vy2), max(vy1, vy2)
+                ix, iy = vx1, hy1
+                if h_lo - 0.2 <= ix <= h_hi + 0.2 and v_lo - 0.2 <= iy <= v_hi + 0.2:
+                    split_points.add((round(ix, 2), round(iy, 2)))
+
+        graph: dict[tuple[float, float], set[tuple[float, float]]] = defaultdict(set)
+        for seg in lines:
+            points = [point for point in split_points if _point_on_segment(point, seg)]
+            x1, y1, x2, y2 = seg
+            if abs(y1 - y2) <= 0.2:
+                points.sort(key=lambda point: point[0])
+            else:
+                points.sort(key=lambda point: point[1])
+            for idx in range(len(points) - 1):
+                a = points[idx]
+                b = points[idx + 1]
+                graph[a].add(b)
+                graph[b].add(a)
+
+        def _node_for(endpoint: tuple[float, float]) -> tuple[float, float]:
+            for node in graph:
+                if _same_point(node, endpoint):
+                    return node
+            raise AssertionError(f"No wire node found for endpoint {endpoint}")
+
+        def _assert_continuous_endpoint(endpoint: tuple[float, float], label: str) -> None:
+            endpoint_node = _node_for(endpoint)
+            neighbours = graph[endpoint_node]
+            assert neighbours, f"No wire segment found at {label} endpoint {endpoint}"
+            continued = any(len(graph[neighbour]) > 1 for neighbour in neighbours)
+            assert continued, (
+                f"{label} wire touches endpoint but does not continue into net routing"
+            )
 
         _assert_continuous_endpoint(q1_b, "Q1.B")
         _assert_continuous_endpoint(q2_b, "Q2.B")
@@ -286,3 +361,115 @@ class TestRendererOverhaulRegressions:
 
         assert not _boxes_overlap(q1_label_box, q1_box)
         assert not _boxes_overlap(q2_label_box, q2_box)
+
+    def test_RO_07_q1_b_branch_avoids_local_backtrack_and_keeps_continuity(self):
+        """RO-07: Exact Q1.B branch geometry avoids local loop-like backtrack."""
+        sch, r1, r2, q1 = _build_q1_b_branch_geometry()
+        style = RenderStyle.default().merge(
+            RenderStyle(symbol=SymbolStyle(scale=6.0), canvas_scale=2.0)
+        )
+        tmpl = RenderTemplate.from_style(style, page=PageConfig.a1(landscape=True))
+        svg = sch.get_svg_string(template=tmpl)
+        lines = _parse_blue_wire_lines(svg)
+        assert lines, "Expected at least one blue wire segment"
+
+        renderer = SymbolRenderer(symbol_scale=6.0)
+        q1_cx = _MARGIN + 65.0 * 3.0
+        q1_cy = _MARGIN + 50.0 * 3.0
+        q1_b = renderer.pin_endpoints(q1, q1_cx, q1_cy, symbol_name="Q_PNP_CBE")[("Q1", "2")]
+
+        r1_cx = _MARGIN + 20.0 * 3.0
+        r1_cy = _MARGIN + 25.0 * 3.0
+        r2_cx = _MARGIN + 20.0 * 3.0
+        r2_cy = _MARGIN + 75.0 * 3.0
+        r1_p1 = renderer.pin_endpoints(r1, r1_cx, r1_cy, symbol_name="R")[("R1", "1")]
+        r2_p2 = renderer.pin_endpoints(r2, r2_cx, r2_cy, symbol_name="R")[("R2", "2")]
+
+        def _same_point(a: tuple[float, float], b: tuple[float, float]) -> bool:
+            return abs(a[0] - b[0]) <= 0.2 and abs(a[1] - b[1]) <= 0.2
+
+        touching_q1_b: list[tuple[float, float]] = []
+        for x1, y1, x2, y2 in lines:
+            if _same_point((x1, y1), q1_b):
+                touching_q1_b.append((x2, y2))
+            elif _same_point((x2, y2), q1_b):
+                touching_q1_b.append((x1, y1))
+
+        assert touching_q1_b, f"No wire endpoint found at Q1.B endpoint {q1_b}"
+        assert len(touching_q1_b) == 1, (
+            "Q1.B should connect with a single local branch segment, "
+            f"got {len(touching_q1_b)} touching segments"
+        )
+        q1_neighbor = touching_q1_b[0]
+        assert abs(q1_neighbor[1] - q1_b[1]) <= 0.2, (
+            "Q1.B local branch should not backtrack vertically near the pin"
+        )
+        assert q1_neighbor[0] < q1_b[0] - 0.2, "Expected Q1.B branch to merge from the left side"
+
+        def _point_on_segment(point: tuple[float, float], seg: tuple[float, float, float, float]) -> bool:
+            px, py = point
+            x1, y1, x2, y2 = seg
+            if abs(y1 - y2) <= 0.2:  # horizontal
+                if abs(py - y1) > 0.2:
+                    return False
+                lo, hi = min(x1, x2), max(x1, x2)
+                return lo - 0.2 <= px <= hi + 0.2
+            if abs(x1 - x2) <= 0.2:  # vertical
+                if abs(px - x1) > 0.2:
+                    return False
+                lo, hi = min(y1, y2), max(y1, y2)
+                return lo - 0.2 <= py <= hi + 0.2
+            return False
+
+        split_points: set[tuple[float, float]] = set()
+        for x1, y1, x2, y2 in lines:
+            split_points.add((round(x1, 2), round(y1, 2)))
+            split_points.add((round(x2, 2), round(y2, 2)))
+
+        for h in lines:
+            hx1, hy1, hx2, hy2 = h
+            if abs(hy1 - hy2) > 0.2:
+                continue
+            h_lo, h_hi = min(hx1, hx2), max(hx1, hx2)
+            for v in lines:
+                vx1, vy1, vx2, vy2 = v
+                if abs(vx1 - vx2) > 0.2:
+                    continue
+                v_lo, v_hi = min(vy1, vy2), max(vy1, vy2)
+                ix, iy = vx1, hy1
+                if h_lo - 0.2 <= ix <= h_hi + 0.2 and v_lo - 0.2 <= iy <= v_hi + 0.2:
+                    split_points.add((round(ix, 2), round(iy, 2)))
+
+        graph: dict[tuple[float, float], set[tuple[float, float]]] = defaultdict(set)
+        for seg in lines:
+            pts_on_seg = [point for point in split_points if _point_on_segment(point, seg)]
+            x1, y1, x2, y2 = seg
+            if abs(y1 - y2) <= 0.2:
+                pts_on_seg.sort(key=lambda point: point[0])
+            else:
+                pts_on_seg.sort(key=lambda point: point[1])
+            for idx in range(len(pts_on_seg) - 1):
+                a = pts_on_seg[idx]
+                b = pts_on_seg[idx + 1]
+                graph[a].add(b)
+                graph[b].add(a)
+
+        def _find_node(endpoint: tuple[float, float]) -> tuple[float, float]:
+            for node in graph:
+                if _same_point(node, endpoint):
+                    return node
+            raise AssertionError(f"No wire node found for endpoint {endpoint}")
+
+        nodes = [_find_node(r1_p1), _find_node(r2_p2), _find_node(q1_b)]
+        seen: set[tuple[float, float]] = set()
+        q = deque([nodes[0]])
+        while q:
+            node = q.popleft()
+            if node in seen:
+                continue
+            seen.add(node)
+            q.extend(graph[node] - seen)
+
+        assert nodes[1] in seen and nodes[2] in seen, (
+            "Expected continuous electrical path across R1(1), R2(2), and Q1(B)"
+        )
