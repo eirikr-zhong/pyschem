@@ -531,6 +531,7 @@ def render_schematic_svg(
         canvas_h = default_page.height
 
     # --- Phase 1: compute part positions ------------------------------------
+    from lib.core.junction import Junction
     from lib.core.part import NetLabel
 
     parts = schematic.parts
@@ -559,7 +560,7 @@ def render_schematic_svg(
     # --- Phase 1b: build obstacle list (one per component body) -------------
     obstacles: list[_Obstacle] = []
     for idx, part in enumerate(parts):
-        if isinstance(part, NetLabel):
+        if isinstance(part, (NetLabel, Junction)):
             continue
         ref = part.ref or f"_part{idx}"
         part_style = resolved_part_styles[ref]
@@ -581,10 +582,17 @@ def render_schematic_svg(
     # --- Phase 2: compute pin endpoints (world coords) ----------------------
     # pin_endpoints[(part_ref, pin_key)] = (px, py)
     pin_endpoints: dict[tuple[str, str], tuple[float, float]] = {}
+    junction_points: set[tuple[float, float]] = set()
     for idx, part in enumerate(parts):
         if isinstance(part, NetLabel):
             continue
         ref = part.ref or f"_part{idx}"
+        if isinstance(part, Junction):
+            cx, cy = positions[ref]
+            junction_pin = part.junction_pin
+            pin_endpoints[(junction_pin.part_ref, junction_pin.key)] = (cx, cy)
+            junction_points.add((cx, cy))
+            continue
         part_style = resolved_part_styles[ref]
         part_renderer = _symbol_renderer_from_style(part_style)
         cx, cy = positions[ref]
@@ -662,7 +670,7 @@ def render_schematic_svg(
 
     # Draw all symbols
     for idx, part in enumerate(parts):
-        if isinstance(part, NetLabel):
+        if isinstance(part, (NetLabel, Junction)):
             continue
         ref = part.ref or f"_part{idx}"
         part_style = resolved_part_styles[ref]
@@ -738,6 +746,18 @@ def render_schematic_svg(
             junction_r=junction_r, font_net=font_net,
             halo_fill=halo_fill, halo_opacity=halo_opacity, halo_pad=halo_pad,
             show_label=show_wire_label,
+            suppress_junction_points=junction_points,
+        )
+
+    # Draw explicit Junction components as fixed tee dots.
+    for jx, jy in sorted(junction_points):
+        canvas.circle(
+            jx,
+            jy,
+            junction_r,
+            stroke=junction_color,
+            stroke_width=0,
+            fill=junction_color,
         )
 
     # Draw NetLabel flag labels (one per pin, no wire routing).
@@ -1110,6 +1130,7 @@ def _draw_wire_net(
     halo_opacity: str | None = None,
     halo_pad: float | None = None,
     show_label: bool = True,
+    suppress_junction_points: set[tuple[float, float]] | None = None,
 ) -> None:
     """Draw Manhattan wire routes connecting all endpoints in *pts*.
 
@@ -1190,6 +1211,11 @@ def _draw_wire_net(
 
     is_anon = net_name.startswith("_anon")
 
+    suppressed_keys = {
+        (round(x, 2), round(y, 2))
+        for x, y in (suppress_junction_points or set())
+    }
+
     # Build effective obstacle list: component bodies + already-drawn wire segs
     eff_obstacles: list = list(obstacles)
     if drawn_segs:
@@ -1237,12 +1263,17 @@ def _draw_wire_net(
         #   through that point (i.e., the trunk extends above or below).
         # - Additionally, draw junctions where 2+ stubs share the same y.
         y_counts = Counter(round(y, 1) for y in trunk_ys)
+        drawn_junction_keys: set[tuple[float, float]] = set()
         for (px, py) in unique_pts:
             py_round = round(py, 1)
             # Draw junction if: 2+ stubs at same y, OR this stub hits interior of trunk
             is_interior = trunk_y_min < py < trunk_y_max
             is_multi = y_counts[py_round] >= 2
             if is_interior or is_multi:
+                key = (round(trunk_x, 2), round(py, 2))
+                if key in suppressed_keys or key in drawn_junction_keys:
+                    continue
+                drawn_junction_keys.add(key)
                 canvas.circle(trunk_x, py, junction_r,
                               stroke=junction_color, stroke_width=0,
                               fill=junction_color)

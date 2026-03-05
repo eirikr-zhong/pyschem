@@ -158,6 +158,8 @@ class Schematic:
         rotation: int = 0,
         locked: bool = True,
     ) -> None:
+        if not any(existing is part for existing in self._parts):
+            self.add_part(part)
         style = Style(x=x, y=y, anchor=anchor, rotation=rotation, locked=locked)
         part.set_style(style)
 

@@ -21,8 +21,9 @@ import re
 from pathlib import Path
 
 from pyschem import (
-    NetLabel,
     BoxStyle,
+    Junction,
+    NetLabel,
     NetLabelStyle,
     PageConfig,
     Part,
@@ -34,6 +35,7 @@ from pyschem import (
     TextPlacementStyle,
     WireStyle,
     configure_default_symbols,
+    connect,
 )
 
 # ---------------------------------------------------------------------------
@@ -48,6 +50,7 @@ sch = Schematic("transistor_and_gate")
 # Parts
 q1 = Part("Transistor_BJT:Q_PNP_CBE", ref="Q1")
 q2 = Part("Transistor_BJT:Q_PNP_CBE", ref="Q2")
+j_q1_bias = Junction(ref="J_Q1_BIAS")
 
 r1 = Part("Device:R", ref="R1", value="10K")
 r2 = Part("Device:R", ref="R2", value="10K")
@@ -55,18 +58,17 @@ r3 = Part("Device:R", ref="R3", value="10K")
 r4 = Part("Device:R", ref="R4", value="10K")
 r5 = Part("Device:R", ref="R5", value="10K")
 
-for p in [q1, q2, r1, r2, r3, r4, r5]:
-    sch.add_part(p)
-
-# Named NetLabels for external signals (reset to the requested 5 labels).
+# Named NetLabels for external signals.
 nl_a = NetLabel("A", direction="right")
 nl_b = NetLabel("B", direction="right")
-nl_vcc = NetLabel("VCC", direction="top")
-nl_gnd = NetLabel("GND", direction="bottom")
 nl_a_and_b = NetLabel("A_AND_B", direction="right")
 
-for nl in [nl_a, nl_b, nl_vcc, nl_gnd, nl_a_and_b]:
-    sch.add_part(nl)
+# Duplicate VCC/GND label flags are intentional: they share same net name,
+# but provide separate visual attachment points.
+nl_vcc_q1 = NetLabel("VCC", direction="top")
+nl_vcc_q2 = NetLabel("VCC", direction="top")
+nl_gnd_left = NetLabel("GND", direction="bottom")
+nl_gnd_right = NetLabel("GND", direction="bottom")
 
 # ---------------------------------------------------------------------------
 # Explicit layout positions (x, y in schematic units → scaled × 3 in SVG)
@@ -81,16 +83,51 @@ for nl in [nl_a, nl_b, nl_vcc, nl_gnd, nl_a_and_b]:
 
 sch.place(r1, x=20, y=25)
 sch.place(r2, x=20, y=75)
-sch.place(q1, x=65, y=50, rotation=90)
-sch.place(r3, x=120, y=50)
-sch.place(r4, x=65, y=110)
+sch.place(q1, x=65, y=50)
+sch.place(j_q1_bias, x=45, y=50)
+sch.place(r3, x=110, y=35)
+sch.place(r4, x=110, y=70)
 sch.place(q2, x=155, y=50)
-sch.place(r5, x=155, y=110)
+sch.place(r5, x=155, y=100)
+
+# Label flags
+sch.place(nl_a, x=5, y=25)
+sch.place(nl_b, x=5, y=75)
+sch.place(nl_vcc_q1, x=65, y=20)
+sch.place(nl_vcc_q2, x=155, y=20)
+sch.place(nl_a_and_b, x=185, y=50)
+sch.place(nl_gnd_left, x=90, y=110)
+sch.place(nl_gnd_right, x=175, y=115)
 
 # ---------------------------------------------------------------------------
-# Wiring (intentionally cleared per request)
+# Wiring
 # ---------------------------------------------------------------------------
-# No connect(...) calls here.
+# A -> R1(2)
+connect(nl_a.label_pin, r1.pin("2"))
+
+# B -> R2(1)
+connect(nl_b.label_pin, r2.pin("1"))
+
+# Merge branch near Q1.B through an explicit tee junction.
+connect(r1.pin("1"), r2.pin("2"), j_q1_bias.junction_pin)
+connect(j_q1_bias.junction_pin, q1.pin("B"))
+
+# VCC label flags -> transistor emitters
+connect(nl_vcc_q1.label_pin, q1.pin("E"))
+connect(nl_vcc_q2.label_pin, q2.pin("E"))
+
+# Q1(C) -> R3(2), and R3(1) -> GND
+connect(q1.pin("C"), r3.pin("2"))
+connect(r3.pin("1"), nl_gnd_left.label_pin)
+
+# Q1(C) -> R4(2), and R4(1) -> Q2(B)
+connect(q1.pin("C"), r4.pin("2"))
+connect(r4.pin("1"), q2.pin("B"))
+
+# Q2(C) -> output label and pull-down branch
+connect(q2.pin("C"), nl_a_and_b.label_pin)
+connect(q2.pin("C"), r5.pin("2"))
+connect(r5.pin("1"), nl_gnd_right.label_pin)
 
 # ---------------------------------------------------------------------------
 # Export

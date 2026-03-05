@@ -149,6 +149,31 @@ def test_place_all_params_stored_correctly() -> None:
     assert style.locked is True
 
 
+def test_place_auto_adds_part_if_missing() -> None:
+    """place() auto-adds a part that has not yet been added."""
+    sch = Schematic("test")
+    part = Part(lib_id="Device:R", ref="R1")
+
+    sch.place(part, x=12.0, y=34.0)
+
+    assert part in sch.parts
+    assert part in sch.sheets["main"].parts
+    style = part.get_style()
+    assert style.x == 12.0
+    assert style.y == 34.0
+
+
+def test_place_does_not_duplicate_existing_part() -> None:
+    """place() should not append duplicate part entries."""
+    sch = Schematic("test")
+    part = Part(lib_id="Device:R", ref="R1")
+    sch.add_part(part)
+
+    sch.place(part, x=1.0, y=2.0)
+
+    assert len([p for p in sch.parts if p is part]) == 1
+
+
 # ---------------------------------------------------------------------------
 # render tests
 # ---------------------------------------------------------------------------

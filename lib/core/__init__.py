@@ -1,6 +1,7 @@
 """Core domain models for schematic representation."""
 
 from lib.core.connect import connect, derive_nets
+from lib.core.junction import Junction
 from lib.core.net import Net
 from lib.core.page import PageConfig
 from lib.core.part import NetLabel, Part, Pin
@@ -26,6 +27,7 @@ __all__ = [
     "Pin",
     "Net",
     "NetLabel",
+    "Junction",
     "Style",
     "DefaultPlacementStyle",
     "resolve_style",

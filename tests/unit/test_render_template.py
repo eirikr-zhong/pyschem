@@ -125,15 +125,19 @@ class TestRenderTemplateExports:
         """RT-15: RenderStyle is importable from pyschem."""
         from pyschem import RenderStyle  # noqa: F401
 
+    def test_RT16_junction_importable_from_pyschem(self):
+        """RT-16: Junction is importable from pyschem."""
+        from pyschem import Junction  # noqa: F401
+
 
 # ---------------------------------------------------------------------------
-# RT-16  Style merge end-to-end via template
+# RT-17  Style merge end-to-end via template
 # ---------------------------------------------------------------------------
 
 
 class TestRenderTemplateEndToEnd:
-    def test_RT16_merge_style_and_wrap_in_template(self):
-        """RT-16: merge a custom style and wrap result in a template."""
+    def test_RT17_merge_style_and_wrap_in_template(self):
+        """RT-17: merge a custom style and wrap result in a template."""
         base = RenderStyle.default()
         override = RenderStyle(
             wire=WireStyle(color="#ff0000"),
