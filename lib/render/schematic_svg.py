@@ -23,11 +23,12 @@ After all symbols are drawn, the renderer routes **wires** for each net:
 every pin in the net has a known endpoint (px, py).  The router connects
 all endpoints of a net with a Manhattan L-route tree:
 
-1. For a 2-pin net the route is a single orthogonal L.  The bend direction
-   is chosen to avoid component bounding boxes (H-first and V-first are
-   both evaluated; the first collision-free option is used).  If both
-   single-bend routes are blocked a simple 3-segment detour is generated
-   that routes around the obstacle.
+1. For a 2-pin net the router first attempts a direct straight segment when
+   endpoints are aligned and clear.  Otherwise the route is a single
+   orthogonal L.  The bend direction is chosen to avoid component bounding
+   boxes (H-first and V-first are both evaluated; the first collision-free
+   option is used).  If both single-bend routes are blocked a simple
+   3-segment detour is generated that routes around the obstacle.
 2. For a 3+-pin net the router picks the **median x** as a vertical trunk
    (shifted away from obstacles if needed) and runs horizontal stubs from
    each pin to the trunk, then one vertical trunk segment from min-y to
@@ -123,7 +124,7 @@ _ROW_HEIGHT = 140       # auto-layout: vertical spacing between parts in a colum
 _PARTS_PER_COL = 4      # max parts per column before wrapping to a new column
 
 # Obstacle avoidance
-_OBSTACLE_CLEARANCE = 6  # px of extra clearance added around each component AABB
+_OBSTACLE_CLEARANCE = 1  # reduced from 6 to allow tighter routing near components
 
 # Cross-net wire avoidance
 _WIRE_SEG_CLEARANCE = 4   # px clearance zone around each drawn wire segment
@@ -298,6 +299,67 @@ def _any_obstacle_hit(
 ) -> bool:
     """Return True if any obstacle blocks the segment from A to B."""
     return any(o.segment_hits(ax, ay, bx, by) for o in obstacles)
+
+
+def _can_draw_straight(
+    p0: tuple[float, float],
+    p1: tuple[float, float],
+    obstacles: list[_Obstacle],
+) -> bool:
+    """Return True if p0→p1 can be drawn as one straight wire segment.
+
+    A straight segment is allowed only when points are axis-aligned and no
+    obstacle blocks the direct segment.
+    """
+    x0, y0 = p0
+    x1, y1 = p1
+    is_aligned = abs(x0 - x1) < 0.5 or abs(y0 - y1) < 0.5
+    if not is_aligned:
+        return False
+    blocking = [obstacle for obstacle in obstacles if obstacle.segment_hits(x0, y0, x1, y1)]
+    if not blocking:
+        return True
+
+    def _moves_outward_from(obstacle: object, from_pt: tuple[float, float], to_pt: tuple[float, float]) -> bool:
+        ox0 = float(getattr(obstacle, "x0"))
+        oy0 = float(getattr(obstacle, "y0"))
+        ox1 = float(getattr(obstacle, "x1"))
+        oy1 = float(getattr(obstacle, "y1"))
+        fx, fy = from_pt
+        tx, ty = to_pt
+
+        if abs(fx - tx) < 0.5:
+            if oy0 <= ty <= oy1:
+                return False
+            moving_up = ty < fy
+            dist_top = abs(fy - oy0)
+            dist_bottom = abs(oy1 - fy)
+            if moving_up:
+                return dist_top <= dist_bottom + 0.5
+            return dist_bottom <= dist_top + 0.5
+
+        if abs(fy - ty) < 0.5:
+            if ox0 <= tx <= ox1:
+                return False
+            moving_left = tx < fx
+            dist_left = abs(fx - ox0)
+            dist_right = abs(ox1 - fx)
+            if moving_left:
+                return dist_left <= dist_right + 0.5
+            return dist_right <= dist_left + 0.5
+
+        return False
+
+    for obstacle in blocking:
+        p0_inside = _obstacle_contains_point(obstacle, x0, y0)
+        p1_inside = _obstacle_contains_point(obstacle, x1, y1)
+        if p0_inside and _moves_outward_from(obstacle, p0, p1):
+            continue
+        if p1_inside and _moves_outward_from(obstacle, p1, p0):
+            continue
+        return False
+
+    return True
 
 
 def _obstacle_contains_point(obstacle: object, x: float, y: float) -> bool:
@@ -582,17 +644,10 @@ def render_schematic_svg(
     # --- Phase 2: compute pin endpoints (world coords) ----------------------
     # pin_endpoints[(part_ref, pin_key)] = (px, py)
     pin_endpoints: dict[tuple[str, str], tuple[float, float]] = {}
-    junction_points: set[tuple[float, float]] = set()
     for idx, part in enumerate(parts):
         if isinstance(part, NetLabel):
             continue
         ref = part.ref or f"_part{idx}"
-        if isinstance(part, Junction):
-            cx, cy = positions[ref]
-            junction_pin = part.junction_pin
-            pin_endpoints[(junction_pin.part_ref, junction_pin.key)] = (cx, cy)
-            junction_points.add((cx, cy))
-            continue
         part_style = resolved_part_styles[ref]
         part_renderer = _symbol_renderer_from_style(part_style)
         cx, cy = positions[ref]
@@ -609,6 +664,12 @@ def render_schematic_svg(
             rotation=part_style.rotation,
         )
         pin_endpoints.update(ep)
+    junction_refs = {part.ref for part in parts if isinstance(part, Junction)}
+    junction_points = {
+        point
+        for (part_ref, _), point in pin_endpoints.items()
+        if part_ref in junction_refs
+    }
 
     # --- Phase 3: gather net→endpoints mapping (derived from pin graph) ----
     from lib.core.connect import derive_nets
@@ -670,7 +731,7 @@ def render_schematic_svg(
 
     # Draw all symbols
     for idx, part in enumerate(parts):
-        if isinstance(part, (NetLabel, Junction)):
+        if isinstance(part, NetLabel):
             continue
         ref = part.ref or f"_part{idx}"
         part_style = resolved_part_styles[ref]
@@ -699,6 +760,17 @@ def render_schematic_svg(
             part_pin_style.font_pin if part_pin_style.font_pin is not None else part_style.pin_font_size,
             field_name="pin_font_size",
         )
+        if isinstance(part, Junction):
+            if part.ref:
+                canvas.text(
+                    cx,
+                    cy,
+                    part.ref,
+                    font_size=part_font_ref,
+                    anchor="middle",
+                    dominant_baseline="middle",
+                )
+            continue
         used_symbol_path = part_symbol_renderer.render_part(
             canvas,
             part,
@@ -747,6 +819,7 @@ def render_schematic_svg(
             halo_fill=halo_fill, halo_opacity=halo_opacity, halo_pad=halo_pad,
             show_label=show_wire_label,
             suppress_junction_points=junction_points,
+            junction_targets=junction_points,
         )
 
     # Draw explicit Junction components as fixed tee dots.
@@ -1020,6 +1093,18 @@ def _compute_pin_endpoints(
     rotation: int = 0,
 ) -> dict[tuple[str, str], tuple[float, float]]:
     """Return {(part_ref, pin_key): (px, py)} for all pins of *part*."""
+    from lib.core.junction import Junction
+    from lib.core.part import NetLabel
+
+    if isinstance(part, (NetLabel, Junction)):
+        if not part.pins:
+            return {}
+        if isinstance(part, NetLabel):
+            marker_pin = part.label_pin
+        else:
+            marker_pin = part.junction_pin
+        return {(marker_pin.part_ref, marker_pin.key): (cx, cy)}
+
     renderer = symbol_renderer or SymbolRenderer()
     endpoints = renderer.pin_endpoints(
         part,
@@ -1131,6 +1216,7 @@ def _draw_wire_net(
     halo_pad: float | None = None,
     show_label: bool = True,
     suppress_junction_points: set[tuple[float, float]] | None = None,
+    junction_targets: set[tuple[float, float]] | None = None,
 ) -> None:
     """Draw Manhattan wire routes connecting all endpoints in *pts*.
 
@@ -1215,6 +1301,10 @@ def _draw_wire_net(
         (round(x, 2), round(y, 2))
         for x, y in (suppress_junction_points or set())
     }
+    junction_target_keys = {
+        (round(x, 2), round(y, 2))
+        for x, y in (junction_targets or set())
+    }
 
     # Build effective obstacle list: component bodies + already-drawn wire segs
     eff_obstacles: list = list(obstacles)
@@ -1230,57 +1320,138 @@ def _draw_wire_net(
     # Record canvas elements count before drawing so we can capture new segments
     el_start = len(canvas._elements)
 
+    def _draw_endpoint_pair(p0: tuple[float, float], p1: tuple[float, float]) -> None:
+        if _can_draw_straight(p0, p1, eff_obstacles):
+            canvas.line(
+                p0[0],
+                p0[1],
+                p1[0],
+                p1[1],
+                stroke=wire_color,
+                stroke_width=wire_width,
+                stroke_dasharray=wire_dash,
+            )
+            return
+        _draw_manhattan_wire(
+            canvas,
+            p0,
+            p1,
+            eff_obstacles,
+            wire_color=wire_color,
+            wire_width=wire_width,
+            wire_dash=wire_dash,
+        )
+
     if len(unique_pts) == 2:
         p0, p1 = unique_pts
-        _draw_manhattan_wire(canvas, p0, p1, eff_obstacles,
-                             wire_color=wire_color, wire_width=wire_width, wire_dash=wire_dash)
+        _draw_endpoint_pair(p0, p1)
     else:
-        # Trunk tree: use median-x trunk, shifted away from obstacles if needed
-        sorted_xs = sorted(set(p[0] for p in unique_pts))
-        trunk_x = _choose_trunk_x(sorted_xs, unique_pts, eff_obstacles)
-
-        trunk_ys = [p[1] for p in unique_pts]
-        trunk_y_min = min(trunk_ys)
-        trunk_y_max = max(trunk_ys)
-
-        # Vertical trunk (may be split into segments to avoid obstacles)
-        if trunk_y_min < trunk_y_max:
-            _draw_vertical_avoiding(
-                canvas, trunk_x, trunk_y_min, trunk_y_max, eff_obstacles,
-                wire_color=wire_color, wire_width=wire_width, wire_dash=wire_dash,
-            )
-
-        # Horizontal stubs from each point to trunk
-        for px, py in unique_pts:
-            if abs(px - trunk_x) > 0.5:
-                _draw_horizontal_stub(canvas, px, py, trunk_x, eff_obstacles,
-                                      trunk_y_span=(trunk_y_min, trunk_y_max),
-                                      wire_color=wire_color, wire_width=wire_width, wire_dash=wire_dash)
-
-        # Junctions at trunk intersections:
-        # - Any point where a horizontal stub meets the trunk is a potential junction.
-        # - We draw a junction dot if a stub meets the trunk AND the trunk passes
-        #   through that point (i.e., the trunk extends above or below).
-        # - Additionally, draw junctions where 2+ stubs share the same y.
-        y_counts = Counter(round(y, 1) for y in trunk_ys)
-        drawn_junction_keys: set[tuple[float, float]] = set()
-        for (px, py) in unique_pts:
-            py_round = round(py, 1)
-            # Draw junction if: 2+ stubs at same y, OR this stub hits interior of trunk
-            is_interior = trunk_y_min < py < trunk_y_max
-            is_multi = y_counts[py_round] >= 2
-            if is_interior or is_multi:
-                key = (round(trunk_x, 2), round(py, 2))
-                if key in suppressed_keys or key in drawn_junction_keys:
+        explicit_junction_pts = [
+            point
+            for point in unique_pts
+            if (round(point[0], 2), round(point[1], 2)) in junction_target_keys
+        ]
+        if explicit_junction_pts:
+            # Explicit junction components are user-authored tee targets.
+            # Route every branch to the selected junction anchor so all
+            # connected endpoints visibly terminate at that point.
+            anchor = explicit_junction_pts[0]
+            for point in unique_pts:
+                if point == anchor:
                     continue
-                drawn_junction_keys.add(key)
-                canvas.circle(trunk_x, py, junction_r,
-                              stroke=junction_color, stroke_width=0,
-                              fill=junction_color)
+                _draw_endpoint_pair(point, anchor)
+            bbox_mid_x, bbox_mid_y = anchor
+        else:
+            # Trunk tree: use median-x trunk, shifted away from obstacles if needed
+            sorted_xs = sorted(set(p[0] for p in unique_pts))
+            trunk_x = _choose_trunk_x(sorted_xs, unique_pts, eff_obstacles)
 
-        # Update label position to trunk midpoint
-        bbox_mid_x = trunk_x
-        bbox_mid_y = (trunk_y_min + trunk_y_max) / 2
+            trunk_ys = [p[1] for p in unique_pts]
+            trunk_y_min = min(trunk_ys)
+            trunk_y_max = max(trunk_ys)
+
+            # Vertical trunk (may be split into segments to avoid obstacles)
+            if trunk_y_min < trunk_y_max:
+                _draw_vertical_avoiding(
+                    canvas, trunk_x, trunk_y_min, trunk_y_max, eff_obstacles,
+                    wire_color=wire_color, wire_width=wire_width, wire_dash=wire_dash,
+                )
+
+            # Horizontal stubs from each point to trunk
+            for px, py in unique_pts:
+                if abs(px - trunk_x) > 0.5:
+                    _draw_horizontal_stub(canvas, px, py, trunk_x, eff_obstacles,
+                                          trunk_y_span=(trunk_y_min, trunk_y_max),
+                                          wire_color=wire_color, wire_width=wire_width, wire_dash=wire_dash)
+                    continue
+
+                # Endpoint sits on the trunk x. If the trunk itself must detour
+                # around an obstacle that contains this endpoint, add a short
+                # escape stub so the endpoint remains electrically connected.
+                local_blockers = [
+                    obstacle
+                    for obstacle in eff_obstacles
+                    if obstacle.segment_hits(trunk_x, trunk_y_min, trunk_x, trunk_y_max)
+                    and _obstacle_contains_point(obstacle, px, py)
+                ]
+                if not local_blockers:
+                    continue
+
+                blocker = local_blockers[0]
+                escape_left = blocker.x0 - _OBSTACLE_CLEARANCE
+                escape_right = blocker.x1 + _OBSTACLE_CLEARANCE
+                if abs(escape_left - trunk_x) <= abs(escape_right - trunk_x):
+                    escape_x = escape_left
+                else:
+                    escape_x = escape_right
+
+                if _can_draw_straight((px, py), (escape_x, py), eff_obstacles):
+                    canvas.line(
+                        px,
+                        py,
+                        escape_x,
+                        py,
+                        stroke=wire_color,
+                        stroke_width=wire_width,
+                        stroke_dasharray=wire_dash,
+                    )
+                else:
+                    _draw_segment_avoiding(
+                        canvas,
+                        px,
+                        py,
+                        escape_x,
+                        py,
+                        eff_obstacles,
+                        wire_color=wire_color,
+                        wire_width=wire_width,
+                        wire_dash=wire_dash,
+                    )
+
+            # Junctions at trunk intersections:
+            # - Any point where a horizontal stub meets the trunk is a potential junction.
+            # - We draw a junction dot if a stub meets the trunk AND the trunk passes
+            #   through that point (i.e., the trunk extends above or below).
+            # - Additionally, draw junctions where 2+ stubs share the same y.
+            y_counts = Counter(round(y, 1) for y in trunk_ys)
+            drawn_junction_keys: set[tuple[float, float]] = set()
+            for (px, py) in unique_pts:
+                py_round = round(py, 1)
+                # Draw junction if: 2+ stubs at same y, OR this stub hits interior of trunk
+                is_interior = trunk_y_min < py < trunk_y_max
+                is_multi = y_counts[py_round] >= 2
+                if is_interior or is_multi:
+                    key = (round(trunk_x, 2), round(py, 2))
+                    if key in suppressed_keys or key in drawn_junction_keys:
+                        continue
+                    drawn_junction_keys.add(key)
+                    canvas.circle(trunk_x, py, junction_r,
+                                  stroke=junction_color, stroke_width=0,
+                                  fill=junction_color)
+
+            # Update label position to trunk midpoint
+            bbox_mid_x = trunk_x
+            bbox_mid_y = (trunk_y_min + trunk_y_max) / 2
 
     # Capture newly-drawn wire segments and append to drawn_segs
     if drawn_segs is not None:
@@ -1379,10 +1550,17 @@ def _choose_trunk_x(
                 add_candidate(anchor_x - delta * step)
 
     def score(tx: float) -> tuple[float, float, float, float, float, float]:
+        constrained_on_trunk = sum(
+            1
+            for px, py in pts
+            if abs(px - tx) <= 0.5
+            and any(isinstance(o, _Obstacle) and _obstacle_contains_point(o, px, py) for o in obstacles)
+        )
         hard_blocks, all_blocks, bend_cost = stub_block_stats(tx)
         total_stub_len = sum(abs(px - tx) for px, _ in pts)
         anchor_bias = abs(tx - anchor_x) if anchor_x is not None else 0.0
         return (
+            float(constrained_on_trunk),
             float(hard_blocks),
             float(all_blocks),
             anchor_bias,

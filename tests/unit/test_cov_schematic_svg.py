@@ -16,9 +16,11 @@ from lib.core.style import Style
 from lib.render.schematic_svg import (
     _Obstacle,
     _TrackingCanvas,
+    _can_draw_straight,
     _draw_flag_label,
     _draw_manhattan_wire,
     _draw_net_label,
+    _draw_wire_net,
     _draw_segment_avoiding,
     _effective_output_scale,
     _nudge_horizontal_flag_tip,
@@ -241,6 +243,52 @@ class _FlakyObstacle:
 
 
 class TestWireRoutingFallbacks:
+    def test_can_draw_straight_requires_axis_alignment(self):
+        assert _can_draw_straight((0.0, 0.0), (10.0, 5.0), obstacles=[]) is False
+
+    def test_can_draw_straight_rejects_blocked_aligned_segment(self):
+        obstacles = [_Obstacle(4.0, -1.0, 6.0, 1.0, clearance=0.0)]
+        assert _can_draw_straight((0.0, 0.0), (10.0, 0.0), obstacles=obstacles) is False
+
+    def test_can_draw_straight_accepts_clear_aligned_segment(self):
+        obstacles = [_Obstacle(4.0, 4.0, 6.0, 6.0, clearance=0.0)]
+        assert _can_draw_straight((0.0, 0.0), (10.0, 0.0), obstacles=obstacles) is True
+
+    def test_can_draw_straight_allows_endpoint_clearance_exit(self):
+        obstacles = [_Obstacle(-1.0, -1.0, 1.0, 1.0, clearance=0.0)]
+        assert _can_draw_straight((0.8, 0.0), (10.0, 0.0), obstacles=obstacles) is True
+
+    def test_draw_wire_net_prefers_single_straight_segment_for_clear_pair(self):
+        canvas = _TrackingCanvas(200, 200)
+
+        _draw_wire_net(
+            canvas,
+            [(0.0, 0.0), (20.0, 0.0)],
+            "_anon_straight",
+            obstacles=[],
+            drawn_segs=[],
+            show_label=False,
+        )
+
+        assert _line_segments(canvas) == [(0.0, 0.0, 20.0, 0.0)]
+
+    def test_draw_wire_net_falls_back_when_aligned_pair_is_blocked(self):
+        canvas = _TrackingCanvas(200, 200)
+        blocked = [_Obstacle(8.0, -1.0, 12.0, 1.0, clearance=0.0)]
+
+        _draw_wire_net(
+            canvas,
+            [(0.0, 0.0), (20.0, 0.0)],
+            "_anon_blocked",
+            obstacles=blocked,
+            drawn_segs=[],
+            show_label=False,
+        )
+
+        segments = _line_segments(canvas)
+        assert segments != [(0.0, 0.0, 20.0, 0.0)]
+        assert len(segments) >= 2
+
     def test_draw_manhattan_wire_prefers_h_first_when_clear(self):
         canvas = _TrackingCanvas(200, 200)
 
