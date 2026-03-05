@@ -214,10 +214,11 @@ class Schematic:
         width: float = 0,
         height: float = 0,
         template: Optional["RenderTemplate"] = None,
+        debug: bool = False,
     ) -> str:
         from lib.render.schematic_svg import render_schematic_svg
         return render_schematic_svg(self, page=page, width=width, height=height,
-                                    template=template)
+                                    template=template, debug=debug)
 
     def get_svg_string(
         self,
@@ -258,9 +259,10 @@ class Schematic:
         width: float = 0,
         height: float = 0,
         template: Optional["RenderTemplate"] = None,
+        debug: bool = False,
     ) -> None:
         content = self._build_svg(page=page, width=width, height=height,
-                                  template=template)
+                                  template=template, debug=debug)
         out = Path(path).expanduser()
         try:
             out.parent.mkdir(parents=True, exist_ok=True)

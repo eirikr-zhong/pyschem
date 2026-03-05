@@ -22,6 +22,8 @@ SVG-DOT-REG  DOT export still works after SVG code added (regression guard)
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 import lib.symbols.symbols as _sym_mod
@@ -102,6 +104,35 @@ class TestSvgGeneration:
         svg = sch.get_svg_string()
         assert '<?xml' in svg
         assert '<svg' in svg
+
+    def test_export_svg_debug_renders_overlay_geometry(self, tmp_path):
+        """SVG-GEN-05: export_svg(debug=True) emits obstacle/trunk/pin overlays."""
+        sch = Schematic("debug_overlay")
+        r1 = Part("Device:R", ref="R1", value="10K")
+        r2 = Part("Device:R", ref="R2", value="10K")
+        q1 = Part("Transistor_BJT:Q_PNP_CBE", ref="Q1")
+        for part in (r1, r2, q1):
+            sch.add_part(part)
+        sch.place(r1, x=20, y=30)
+        sch.place(r2, x=20, y=60)
+        sch.place(q1, x=80, y=45)
+        connect(r1.pin("1"), q1.pin("B"))
+        connect(r2.pin("1"), q1.pin("B"))
+
+        out = tmp_path / "debug_overlay.svg"
+        sch.export_svg(str(out), debug=True)
+        svg = out.read_text(encoding="utf-8")
+
+        assert 'fill="rgba(255,0,0,0.2)"' in svg
+        assert 'stroke-dasharray="2,2"' in svg
+        assert re.search(r'<text [^>]*fill="red"[^>]*>R1</text>', svg)
+        assert re.search(r'<text [^>]*fill="red"[^>]*>R2</text>', svg)
+        assert re.search(r'<text [^>]*fill="red"[^>]*>Q1</text>', svg)
+        assert 'stroke="green"' in svg
+        assert 'stroke-dasharray="5,5"' in svg
+        assert "trunk x=" in svg
+        assert 'fill="blue"' in svg
+        assert 'r="3"' in svg
 
 
 # ===========================================================================

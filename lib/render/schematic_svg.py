@@ -483,6 +483,7 @@ def render_schematic_svg(
     width: float = 0,
     height: float = 0,
     template: Optional["_RenderTemplateT"] = None,
+    debug: bool = False,
 ) -> str:
     """Render *schematic* to an SVG string.
 
@@ -503,6 +504,9 @@ def render_schematic_svg(
                    :meth:`~lib.core.render_style.RenderTemplate.default` which
                    is bit-for-bit compatible with the previous hard-coded
                    defaults.
+        debug:     When ``True``, draw debug overlays on top of the final
+                   schematic (component obstacles, trunk guides, and pin
+                   endpoint markers).
 
     Returns:
         Complete SVG document as a string.
@@ -621,6 +625,7 @@ def render_schematic_svg(
 
     # --- Phase 1b: build obstacle list (one per component body) -------------
     obstacles: list[_Obstacle] = []
+    debug_component_obstacles: list[tuple[str, _Obstacle]] = []
     for idx, part in enumerate(parts):
         if isinstance(part, (NetLabel, Junction)):
             continue
@@ -640,6 +645,8 @@ def render_schematic_svg(
             rotation=part_style.rotation,
         )
         obstacles.append(obs)
+        if debug:
+            debug_component_obstacles.append((ref, obs))
 
     # --- Phase 2: compute pin endpoints (world coords) ----------------------
     # pin_endpoints[(part_ref, pin_key)] = (px, py)
@@ -807,6 +814,7 @@ def render_schematic_svg(
     # are committed before complex trunk trees.  This gives the trunk router a
     # chance to detect and avoid the already-drawn wire segments.
     drawn_segs: list[_WireSegment] = []
+    debug_trunks: list[tuple[float, float, float]] = []
     sorted_net_items = sorted(net_components, key=lambda kv: len(kv[1]))
     for net_name, pts in sorted_net_items:
         flagged_points = flagged_endpoints_by_net.get(net_name, set())
@@ -820,6 +828,7 @@ def render_schematic_svg(
             show_label=show_wire_label,
             suppress_junction_points=junction_points,
             junction_targets=junction_points,
+            debug_trunks=debug_trunks if debug else None,
         )
 
     # Draw explicit Junction components as fixed tee dots.
@@ -961,8 +970,86 @@ def render_schematic_svg(
                 )
             )
 
+    if debug:
+        _draw_debug_overlays(
+            canvas,
+            component_obstacles=debug_component_obstacles,
+            trunk_segments=debug_trunks,
+            pin_endpoints=pin_endpoints,
+        )
+
     # --- Phase 5: apply fit-to-content viewBox -----------------------------
     return canvas.to_svg_fit(margin=_MARGIN, output_scale=output_scale)
+
+
+# ---------------------------------------------------------------------------
+# Debug overlays
+# ---------------------------------------------------------------------------
+
+def _draw_debug_overlays(
+    canvas: "_TrackingCanvas",
+    *,
+    component_obstacles: list[tuple[str, _Obstacle]],
+    trunk_segments: list[tuple[float, float, float]],
+    pin_endpoints: dict[tuple[str, str], tuple[float, float]],
+) -> None:
+    """Render debug geometry above all normal schematic elements."""
+    obstacle_font = 10.0
+    pin_font = 9.0
+    trunk_font = 10.0
+
+    for part_ref, obstacle in component_obstacles:
+        x = obstacle.x0
+        y = obstacle.y0
+        width = obstacle.x1 - obstacle.x0
+        height = obstacle.y1 - obstacle.y0
+        canvas._elements.append(
+            f'<rect x="{x:.1f}" y="{y:.1f}" width="{width:.1f}" height="{height:.1f}" '
+            f'fill="rgba(255,0,0,0.2)" stroke="red" stroke-width="1" stroke-dasharray="2,2"/>'
+        )
+        canvas._track(obstacle.x0, obstacle.y0)
+        canvas._track(obstacle.x1, obstacle.y1)
+        canvas.text(
+            obstacle.x0 + 2.0,
+            obstacle.y0 - 6.0,
+            part_ref,
+            font_size=obstacle_font,
+            fill="red",
+            anchor="start",
+            dominant_baseline="middle",
+        )
+
+    for trunk_x, trunk_y_min, trunk_y_max in trunk_segments:
+        canvas.line(
+            trunk_x,
+            trunk_y_min,
+            trunk_x,
+            trunk_y_max,
+            stroke="green",
+            stroke_width=2,
+            stroke_dasharray="5,5",
+        )
+        canvas.text(
+            trunk_x + 4.0,
+            min(trunk_y_min, trunk_y_max) - 8.0,
+            f"trunk x={trunk_x:.1f}",
+            font_size=trunk_font,
+            fill="green",
+            anchor="start",
+            dominant_baseline="middle",
+        )
+
+    for _, (px, py) in pin_endpoints.items():
+        canvas.circle(px, py, 3, stroke="none", stroke_width=0, fill="blue")
+        canvas.text(
+            px + 5.0,
+            py - 5.0,
+            f"({px:.1f}, {py:.1f})",
+            font_size=pin_font,
+            fill="blue",
+            anchor="start",
+            dominant_baseline="middle",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1217,6 +1304,7 @@ def _draw_wire_net(
     show_label: bool = True,
     suppress_junction_points: set[tuple[float, float]] | None = None,
     junction_targets: set[tuple[float, float]] | None = None,
+    debug_trunks: list[tuple[float, float, float]] | None = None,
 ) -> None:
     """Draw Manhattan wire routes connecting all endpoints in *pts*.
 
@@ -1369,6 +1457,8 @@ def _draw_wire_net(
             trunk_ys = [p[1] for p in unique_pts]
             trunk_y_min = min(trunk_ys)
             trunk_y_max = max(trunk_ys)
+            if debug_trunks is not None:
+                debug_trunks.append((trunk_x, trunk_y_min, trunk_y_max))
 
             # Vertical trunk (may be split into segments to avoid obstacles)
             if trunk_y_min < trunk_y_max:
