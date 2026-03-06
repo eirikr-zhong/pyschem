@@ -31,7 +31,6 @@ from pyschem import (
     RenderTemplate,
     Style,
     Schematic,
-    SymbolStyle,
     TextPlacementStyle,
     WireStyle,
     configure_default_symbols,
@@ -51,6 +50,11 @@ sch = Schematic("transistor_and_gate")
 q1 = Part("Transistor_BJT:Q_PNP_CBE", ref="Q1")
 q2 = Part("Transistor_BJT:Q_PNP_CBE", ref="Q2")
 j_q1_bias = Junction(ref="J_Q1_BIAS")
+j_vcc_q1 = Junction(ref="J_VCC_Q1")
+j_vcc_q2 = Junction(ref="J_VCC_Q2")
+j_a_and_b = Junction(ref="J_A_AND_B")
+j_gnd_left = Junction(ref="J_GND_LEFT")
+j_gnd_right = Junction(ref="J_GND_RIGHT")
 
 r1 = Part("Device:R", ref="R1", value="10K")
 r2 = Part("Device:R", ref="R2", value="10K")
@@ -84,11 +88,11 @@ nl_gnd_right = NetLabel("GND", direction="bottom")
 sch.place(r1, x=20, y=25)
 sch.place(r2, x=20, y=75)
 sch.place(q1, x=65, y=50)
-sch.place(j_q1_bias, x=45, y=50)
-sch.place(r3, x=110, y=35)
-sch.place(r4, x=110, y=70)
-sch.place(q2, x=155, y=50)
-sch.place(r5, x=155, y=100)
+sch.place(j_q1_bias, x=20, y=50)  # ← x=20 对齐 R1/R2
+sch.place(r3, x=65, y=75)  # R3 X 与 Q1(C) 对齐，在 Q1 下方
+sch.place(r4, x=125, y=50)  # R4(2) 与 Q1(C) 水平对齐，X 不遮挡 Q1
+sch.place(q2, x=175, y=50, rotation=0)  # Q2 跟着右移，保持水平
+sch.place(r5, x=205, y=100)
 
 # Label flags
 sch.place(nl_a, x=5, y=25)
@@ -98,6 +102,14 @@ sch.place(nl_vcc_q2, x=155, y=20)
 sch.place(nl_a_and_b, x=185, y=50)
 sch.place(nl_gnd_left, x=90, y=110)
 sch.place(nl_gnd_right, x=175, y=115)
+
+# Place explicit junction anchors at NetLabel pin endpoints so
+# rendered wires visibly terminate at each label.
+sch.place(j_vcc_q1, x=65, y=25.08)
+sch.place(j_vcc_q2, x=155, y=25.08)
+sch.place(j_a_and_b, x=179.92, y=50)
+sch.place(j_gnd_left, x=90, y=104.92)
+sch.place(j_gnd_right, x=175, y=109.92)
 
 # ---------------------------------------------------------------------------
 # Wiring
@@ -109,25 +121,31 @@ connect(nl_a.label_pin, r1.pin("2"))
 connect(nl_b.label_pin, r2.pin("1"))
 
 # Merge branch near Q1.B through an explicit tee junction.
-connect(r1.pin("1"), r2.pin("2"), j_q1_bias.junction_pin)
+connect(r1.pin("1"), j_q1_bias.junction_pin)
+connect(r2.pin("2"), j_q1_bias.junction_pin)
 connect(j_q1_bias.junction_pin, q1.pin("B"))
 
 # VCC label flags -> transistor emitters
-connect(nl_vcc_q1.label_pin, q1.pin("E"))
-connect(nl_vcc_q2.label_pin, q2.pin("E"))
+connect(nl_vcc_q1.label_pin, j_vcc_q1.junction_pin)
+connect(j_vcc_q1.junction_pin, q1.pin("E"))
+connect(nl_vcc_q2.label_pin, j_vcc_q2.junction_pin)
+connect(j_vcc_q2.junction_pin, q2.pin("E"))
 
 # Q1(C) -> R3(2), and R3(1) -> GND
 connect(q1.pin("C"), r3.pin("2"))
-connect(r3.pin("1"), nl_gnd_left.label_pin)
+connect(r3.pin("1"), j_gnd_left.junction_pin)
+connect(j_gnd_left.junction_pin, nl_gnd_left.label_pin)
 
 # Q1(C) -> R4(2), and R4(1) -> Q2(B)
 connect(q1.pin("C"), r4.pin("2"))
 connect(r4.pin("1"), q2.pin("B"))
 
 # Q2(C) -> output label and pull-down branch
-connect(q2.pin("C"), nl_a_and_b.label_pin)
+connect(q2.pin("C"), j_a_and_b.junction_pin)
+connect(j_a_and_b.junction_pin, nl_a_and_b.label_pin)
 connect(q2.pin("C"), r5.pin("2"))
-connect(r5.pin("1"), nl_gnd_right.label_pin)
+connect(r5.pin("1"), j_gnd_right.junction_pin)
+connect(j_gnd_right.junction_pin, nl_gnd_right.label_pin)
 
 # ---------------------------------------------------------------------------
 # Export
@@ -142,13 +160,8 @@ render_template = RenderTemplate.from_style(
         label_net=NetLabelStyle(color=wire_color),
         box=BoxStyle(stroke="#d32f2f"),
         pin=PinStyle(stub_stroke="#d32f2f", key_fill="#000000", value_fill="#000000", font_value=8.0),
-        symbol=SymbolStyle(scale=6.0),
         value_text=TextPlacementStyle(position="center"),
         value_font_size=8.0,
-        canvas_scale_mode="auto",
-        canvas_scale_min=1.0,
-        canvas_scale_max=6.0,
-        canvas_target_min_font_px=12.0,
     ),
     page=page,
 )
