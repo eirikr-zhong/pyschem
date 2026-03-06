@@ -1432,10 +1432,74 @@ def _draw_wire_net(
             # Trunk tree: use median-x trunk, shifted away from obstacles if needed
             sorted_xs = sorted(set(p[0] for p in unique_pts))
             trunk_x = _choose_trunk_x(sorted_xs, unique_pts, eff_obstacles)
+            trunk_y = _choose_trunk_y(unique_pts)
 
-            trunk_ys = [p[1] for p in unique_pts]
+            # Phase 2: direct same-y links before trunk routing.
+            same_y_groups: dict[float, list[tuple[float, float]]] = {}
+            for point in unique_pts:
+                same_y_groups.setdefault(round(point[1], 1), []).append(point)
+
+            same_y_links: dict[tuple[float, float], set[tuple[float, float]]] = {}
+            for group in same_y_groups.values():
+                if len(group) < 2:
+                    continue
+                ordered = sorted(group, key=lambda point: point[0])
+                for left_pt, right_pt in zip(ordered, ordered[1:]):
+                    if abs(right_pt[0] - left_pt[0]) <= 0.5:
+                        continue
+                    if not _can_draw_straight(left_pt, right_pt, eff_obstacles):
+                        continue
+                    canvas.line(
+                        left_pt[0],
+                        left_pt[1],
+                        right_pt[0],
+                        right_pt[1],
+                        stroke=wire_color,
+                        stroke_width=wire_width,
+                        stroke_dasharray=wire_dash,
+                    )
+                    same_y_links.setdefault(left_pt, set()).add(right_pt)
+                    same_y_links.setdefault(right_pt, set()).add(left_pt)
+
+            trunk_skip_points: set[tuple[float, float]] = set()
+            visited_same_y: set[tuple[float, float]] = set()
+            for start in same_y_links:
+                if start in visited_same_y:
+                    continue
+                stack = [start]
+                component: set[tuple[float, float]] = set()
+                while stack:
+                    point = stack.pop()
+                    if point in visited_same_y:
+                        continue
+                    visited_same_y.add(point)
+                    component.add(point)
+                    stack.extend(same_y_links.get(point, ()))
+                if len(component) < 2:
+                    continue
+                anchor = min(
+                    component,
+                    key=lambda point: (
+                        abs(point[0] - trunk_x),
+                        abs(point[1] - trunk_y),
+                        point[0],
+                    ),
+                )
+                for point in component:
+                    if point != anchor:
+                        trunk_skip_points.add(point)
+
+            trunk_points = [point for point in unique_pts if point not in trunk_skip_points]
+            if not trunk_points:
+                trunk_points = unique_pts
+
+            trunk_ys = [p[1] for p in trunk_points]
             trunk_y_min = min(trunk_ys)
             trunk_y_max = max(trunk_ys)
+            if trunk_y_min > trunk_y:
+                trunk_y_min = trunk_y
+            if trunk_y_max < trunk_y:
+                trunk_y_max = trunk_y
             if debug_trunks is not None:
                 debug_trunks.append((trunk_x, trunk_y_min, trunk_y_max))
 
@@ -1446,13 +1510,25 @@ def _draw_wire_net(
                     wire_color=wire_color, wire_width=wire_width, wire_dash=wire_dash,
                 )
 
-            # Horizontal stubs from each point to trunk
-            for px, py in unique_pts:
+            # Horizontal stubs from each trunk-routed point to trunk
+            trunk_touch_points: set[tuple[float, float]] = set()
+            for px, py in trunk_points:
                 if abs(px - trunk_x) > 0.5:
-                    _draw_horizontal_stub(canvas, px, py, trunk_x, eff_obstacles,
-                                          trunk_y_span=(trunk_y_min, trunk_y_max),
-                                          wire_color=wire_color, wire_width=wire_width, wire_dash=wire_dash)
+                    _draw_horizontal_stub(
+                        canvas,
+                        px,
+                        py,
+                        trunk_x,
+                        eff_obstacles,
+                        trunk_y_span=(trunk_y_min, trunk_y_max),
+                        wire_color=wire_color,
+                        wire_width=wire_width,
+                        wire_dash=wire_dash,
+                    )
+                    trunk_touch_points.add((px, py))
                     continue
+
+                trunk_touch_points.add((px, py))
 
                 # Endpoint sits on the trunk x. If the trunk itself must detour
                 # around an obstacle that contains this endpoint, add a short
@@ -1502,9 +1578,9 @@ def _draw_wire_net(
             # - We draw a junction dot if a stub meets the trunk AND the trunk passes
             #   through that point (i.e., the trunk extends above or below).
             # - Additionally, draw junctions where 2+ stubs share the same y.
-            y_counts = Counter(round(y, 1) for y in trunk_ys)
+            y_counts = Counter(round(y, 1) for _, y in trunk_touch_points)
             drawn_junction_keys: set[tuple[float, float]] = set()
-            for (px, py) in unique_pts:
+            for _, py in trunk_touch_points:
                 py_round = round(py, 1)
                 # Draw junction if: 2+ stubs at same y, OR this stub hits interior of trunk
                 is_interior = trunk_y_min < py < trunk_y_max
@@ -1514,13 +1590,18 @@ def _draw_wire_net(
                     if key in suppressed_keys or key in drawn_junction_keys:
                         continue
                     drawn_junction_keys.add(key)
-                    canvas.circle(trunk_x, py, junction_r,
-                                  stroke=junction_color, stroke_width=0,
-                                  fill=junction_color)
+                    canvas.circle(
+                        trunk_x,
+                        py,
+                        junction_r,
+                        stroke=junction_color,
+                        stroke_width=0,
+                        fill=junction_color,
+                    )
 
-            # Update label position to trunk midpoint
+            # Update label position to chosen trunk axis and aligned y.
             bbox_mid_x = trunk_x
-            bbox_mid_y = (trunk_y_min + trunk_y_max) / 2
+            bbox_mid_y = trunk_y
 
     # Capture newly-drawn wire segments and append to drawn_segs
     if drawn_segs is not None:
@@ -1675,6 +1756,16 @@ def _choose_trunk_x(
             key=lambda item: (item[0][5], item[0][6], item[0][7]),
         )[1]
     return min(scored_candidates, key=lambda item: item[0])[1]
+
+
+def _choose_trunk_y(
+    pts: list[tuple[float, float]],
+) -> float:
+    """Pick trunk-y by the most frequently occurring endpoint y."""
+    if not pts:
+        raise ValueError("pts must not be empty")
+    y_counts = Counter(round(y, 1) for _, y in pts)
+    return float(y_counts.most_common(1)[0][0])
 
 
 def _draw_vertical_avoiding(
@@ -1965,12 +2056,12 @@ def _draw_manhattan_wire(
                                wire_color=wire_color, wire_width=wire_width, wire_dash=wire_dash)
         return
 
-    h_first_blocked = _any_obstacle_hit(obstacles, x0, y0, x1, y0)
-    h_first_clear = not h_first_blocked
-    h_second_clear = h_first_clear and not _any_obstacle_hit(obstacles, x1, y0, x1, y1)
-    v_first_blocked = _any_obstacle_hit(obstacles, x0, y0, x0, y1)
-    v_first_clear = not v_first_blocked
-    v_second_clear = v_first_clear and not _any_obstacle_hit(obstacles, x0, y1, x1, y1)
+    h_first_clear = _can_draw_straight((x0, y0), (x1, y0), obstacles)
+    h_first_blocked = not h_first_clear
+    h_second_clear = h_first_clear and _can_draw_straight((x1, y0), (x1, y1), obstacles)
+    v_first_clear = _can_draw_straight((x0, y0), (x0, y1), obstacles)
+    v_first_blocked = not v_first_clear
+    v_second_clear = v_first_clear and _can_draw_straight((x0, y1), (x1, y1), obstacles)
 
     if h_first_clear and h_second_clear:
         canvas.line(
