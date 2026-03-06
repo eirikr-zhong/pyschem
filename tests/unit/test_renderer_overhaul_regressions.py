@@ -2,13 +2,14 @@
 
 Test IDs
 --------
-RO-01  Symbol scale=6 expands pin endpoint geometry predictably
-RO-02  canvas_scale=2 scales exported SVG width/height
-RO-03  High-scale labels avoid Q2 ref/VCC overlap and duplicate net text
+RO-01  Parsed symbols use amplified pin geometry
+RO-02  Page dimensions remain stable in exported SVG
+RO-03  Labels avoid Q2 ref/VCC overlap and duplicate net text
 RO-04  Q1.B and Q2.B nets stay continuous at pin endpoints
 RO-05  Resistor pin endpoints use outer pin side
 RO-06  Q1.B/Q2.B pin labels stay outside symbol body
 RO-07  Q1.B branch avoids loop-like local backtrack
+RO-08  Explicit Junction remains wire merge target
 """
 
 from __future__ import annotations
@@ -19,9 +20,10 @@ from collections import defaultdict, deque
 import pytest
 
 import lib.symbols.symbols as _sym_mod
+from lib.core.junction import Junction
 from lib.core.page import PageConfig
 from lib.core.part import NetLabel, Part
-from lib.core.render_style import RenderStyle, RenderTemplate, SymbolStyle
+from lib.core.render_style import RenderStyle, RenderTemplate, WireStyle
 from lib.core.schematic import Schematic
 from lib.render.schematic_svg import _MARGIN
 from lib.render.symbol_renderer import SymbolRenderer
@@ -142,31 +144,45 @@ def _build_q1_b_branch_geometry() -> tuple[Schematic, Part, Part, Part]:
     return sch, r1, r2, q1
 
 
+def _build_explicit_junction_bias_geometry() -> tuple[Schematic, Part, Part, Part, Junction]:
+    sch = Schematic("junction_bias_regression")
+    q1 = Part("Transistor_BJT:Q_PNP_CBE", ref="Q1")
+    r1 = Part("Device:R", ref="R1", value="10K")
+    r2 = Part("Device:R", ref="R2", value="10K")
+    j_bias = Junction(ref="J_Q1_BIAS")
+
+    for part in [q1, r1, r2, j_bias]:
+        sch.add_part(part)
+
+    sch.place(r1, x=20, y=25)
+    sch.place(r2, x=20, y=75)
+    sch.place(q1, x=65, y=50)
+    sch.place(j_bias, x=20, y=50)
+
+    sch.connect(r1.pin("1"), j_bias.junction_pin)
+    sch.connect(r2.pin("2"), j_bias.junction_pin)
+    sch.connect(j_bias.junction_pin, q1.pin("B"))
+    return sch, r1, r2, q1, j_bias
+
+
 class TestRendererOverhaulRegressions:
-    def test_RO_01_symbol_scale_6_expands_pin_geometry(self):
-        """RO-01: SymbolStyle(scale=6) scales endpoint distance from centre."""
+    def test_RO_01_parsed_symbol_geometry_is_amplified(self):
+        """RO-01: Parsed symbols expose amplified pin endpoint distance."""
         q2 = Part("Transistor_BJT:Q_PNP_CBE", ref="Q2")
         q2.pin("B")
         q2.pin("C")
         q2.pin("E")
 
-        renderer_1x = SymbolRenderer(symbol_scale=1.0)
-        renderer_6x = SymbolRenderer(symbol_scale=6.0)
-        endpoints_1x = renderer_1x.pin_endpoints(q2, 100.0, 200.0, symbol_name="Q_PNP_CBE")
-        endpoints_6x = renderer_6x.pin_endpoints(q2, 100.0, 200.0, symbol_name="Q_PNP_CBE")
+        renderer = SymbolRenderer()
+        endpoints = renderer.pin_endpoints(q2, 100.0, 200.0, symbol_name="Q_PNP_CBE")
+        q2_b = endpoints[("Q2", "2")]
+        dist = abs(q2_b[0] - 100.0)
+        assert dist == pytest.approx(30.48, rel=1e-6)
 
-        q2_b_1x = endpoints_1x[("Q2", "2")]
-        q2_b_6x = endpoints_6x[("Q2", "2")]
-        dist_1x = abs(q2_b_1x[0] - 100.0)
-        dist_6x = abs(q2_b_6x[0] - 100.0)
-        assert dist_6x == pytest.approx(dist_1x * 6.0, rel=1e-6)
-
-    def test_RO_02_canvas_scale_scales_output_dimensions(self):
-        """RO-02: RenderStyle.canvas_scale multiplies final SVG width/height."""
+    def test_RO_02_page_dimensions_are_preserved(self):
+        """RO-02: Exported SVG width/height match configured page size."""
         sch, _, _ = _build_transistor_and_gate()
-        style = RenderStyle.default().merge(
-            RenderStyle(symbol=SymbolStyle(scale=6.0), canvas_scale=2.0)
-        )
+        style = RenderStyle.default()
         tmpl = RenderTemplate.from_style(style, page=PageConfig(width=1200, height=900))
         svg = sch.get_svg_string(template=tmpl)
 
@@ -174,15 +190,13 @@ class TestRendererOverhaulRegressions:
         assert m is not None
         width = float(m.group(1))
         height = float(m.group(2))
-        assert width == 2400.0
-        assert height == 1800.0
+        assert width == 1200.0
+        assert height == 900.0
 
     def test_RO_03_high_scale_avoids_q2_vcc_overlap_and_duplicate_net_text(self):
-        """RO-03: High-scale render avoids Q2/VCC overlap and duplicate A_AND_B labels."""
+        """RO-03: Render avoids Q2/VCC overlap and duplicate A_AND_B labels."""
         sch, _, _ = _build_transistor_and_gate()
-        style = RenderStyle.default().merge(
-            RenderStyle(symbol=SymbolStyle(scale=6.0), canvas_scale=2.0)
-        )
+        style = RenderStyle.default()
         tmpl = RenderTemplate.from_style(style, page=PageConfig.a1(landscape=True))
         svg = sch.get_svg_string(template=tmpl)
         nodes = _parse_text_nodes(svg)
@@ -201,15 +215,13 @@ class TestRendererOverhaulRegressions:
         assert svg.count(">A_AND_B<") == 1
 
     def test_RO_04_q1_q2_b_pins_have_continuous_wire_connection(self):
-        """RO-04: At scale=6, blue wire segments terminate at Q1.B/Q2.B and continue."""
+        """RO-04: Blue wire segments terminate at Q1.B/Q2.B and continue."""
         sch, q1, q2 = _build_transistor_and_gate()
-        style = RenderStyle.default().merge(
-            RenderStyle(symbol=SymbolStyle(scale=6.0), canvas_scale=2.0)
-        )
+        style = RenderStyle.default()
         tmpl = RenderTemplate.from_style(style, page=PageConfig.a1(landscape=True))
         svg = sch.get_svg_string(template=tmpl)
 
-        renderer = SymbolRenderer(symbol_scale=6.0)
+        renderer = SymbolRenderer()
         q1_cx = _MARGIN + 65.0 * 3.0
         q1_cy = _MARGIN + 50.0 * 3.0
         q2_cx = _MARGIN + 155.0 * 3.0
@@ -308,18 +320,16 @@ class TestRendererOverhaulRegressions:
         r1.pin("1")
         r1.pin("2")
 
-        renderer = SymbolRenderer(symbol_scale=1.0)
+        renderer = SymbolRenderer()
         endpoints = renderer.pin_endpoints(r1, 100.0, 200.0, symbol_name="R")
 
-        assert endpoints[("R1", "1")] == pytest.approx((100.0, 203.81), rel=1e-6)
-        assert endpoints[("R1", "2")] == pytest.approx((100.0, 196.19), rel=1e-6)
+        assert endpoints[("R1", "1")] == pytest.approx((100.0, 222.86), rel=1e-6)
+        assert endpoints[("R1", "2")] == pytest.approx((100.0, 177.14), rel=1e-6)
 
     def test_RO_06_q1_q2_b_labels_are_outside_component_boxes(self):
         """RO-06: Q1.B/Q2.B labels are not trapped inside component boxes."""
         sch, q1, q2 = _build_transistor_and_gate()
-        style = RenderStyle.default().merge(
-            RenderStyle(symbol=SymbolStyle(scale=6.0), canvas_scale=2.0)
-        )
+        style = RenderStyle.default()
         tmpl = RenderTemplate.from_style(style, page=PageConfig.a1(landscape=True))
         svg = sch.get_svg_string(template=tmpl)
 
@@ -327,7 +337,7 @@ class TestRendererOverhaulRegressions:
         b_nodes = [node for node in nodes if node[0] == "B"]
         assert b_nodes, "Expected at least one 'B' text node"
 
-        renderer = SymbolRenderer(symbol_scale=6.0)
+        renderer = SymbolRenderer()
         q1_center = (_MARGIN + 65.0 * 3.0, _MARGIN + 50.0 * 3.0)
         q2_center = (_MARGIN + 155.0 * 3.0, _MARGIN + 50.0 * 3.0)
 
@@ -365,15 +375,13 @@ class TestRendererOverhaulRegressions:
     def test_RO_07_q1_b_branch_avoids_local_backtrack_and_keeps_continuity(self):
         """RO-07: Exact Q1.B branch geometry avoids local loop-like backtrack."""
         sch, r1, r2, q1 = _build_q1_b_branch_geometry()
-        style = RenderStyle.default().merge(
-            RenderStyle(symbol=SymbolStyle(scale=6.0), canvas_scale=2.0)
-        )
+        style = RenderStyle.default()
         tmpl = RenderTemplate.from_style(style, page=PageConfig.a1(landscape=True))
         svg = sch.get_svg_string(template=tmpl)
         lines = _parse_blue_wire_lines(svg)
         assert lines, "Expected at least one blue wire segment"
 
-        renderer = SymbolRenderer(symbol_scale=6.0)
+        renderer = SymbolRenderer()
         q1_cx = _MARGIN + 65.0 * 3.0
         q1_cy = _MARGIN + 50.0 * 3.0
         q1_b = renderer.pin_endpoints(q1, q1_cx, q1_cy, symbol_name="Q_PNP_CBE")[("Q1", "2")]
@@ -473,3 +481,107 @@ class TestRendererOverhaulRegressions:
         assert nodes[1] in seen and nodes[2] in seen, (
             "Expected continuous electrical path across R1(1), R2(2), and Q1(B)"
         )
+
+    def test_RO_08_explicit_junction_is_wire_landing_target(self):
+        """RO-08: Explicit Junction stays the routed merge point for all branches."""
+        sch, r1, r2, q1, junction = _build_explicit_junction_bias_geometry()
+        style = RenderStyle.default().merge(RenderStyle(wire=WireStyle(color="#1565c0")))
+        tmpl = RenderTemplate.from_style(style, page=PageConfig.a1(landscape=True))
+        svg = sch.get_svg_string(template=tmpl)
+        lines = _parse_blue_wire_lines(svg)
+        assert lines, "Expected at least one blue wire segment"
+
+        renderer = SymbolRenderer()
+        q1_cx = _MARGIN + 65.0 * 3.0
+        q1_cy = _MARGIN + 50.0 * 3.0
+        r1_cx = _MARGIN + 20.0 * 3.0
+        r1_cy = _MARGIN + 25.0 * 3.0
+        r2_cx = _MARGIN + 20.0 * 3.0
+        r2_cy = _MARGIN + 75.0 * 3.0
+        junction_pt = (_MARGIN + 20.0 * 3.0, _MARGIN + 50.0 * 3.0)
+
+        r1_p1 = renderer.pin_endpoints(r1, r1_cx, r1_cy, symbol_name="R")[("R1", "1")]
+        r2_p2 = renderer.pin_endpoints(r2, r2_cx, r2_cy, symbol_name="R")[("R2", "2")]
+        q1_b = renderer.pin_endpoints(q1, q1_cx, q1_cy, symbol_name="Q_PNP_CBE")[("Q1", "2")]
+
+        def _point_on_segment(point: tuple[float, float], seg: tuple[float, float, float, float]) -> bool:
+            px, py = point
+            x1, y1, x2, y2 = seg
+            if abs(y1 - y2) <= 0.2:
+                if abs(py - y1) > 0.2:
+                    return False
+                lo, hi = min(x1, x2), max(x1, x2)
+                return lo - 0.2 <= px <= hi + 0.2
+            if abs(x1 - x2) <= 0.2:
+                if abs(px - x1) > 0.2:
+                    return False
+                lo, hi = min(y1, y2), max(y1, y2)
+                return lo - 0.2 <= py <= hi + 0.2
+            return False
+
+        def _same_point(a: tuple[float, float], b: tuple[float, float]) -> bool:
+            return abs(a[0] - b[0]) <= 0.2 and abs(a[1] - b[1]) <= 0.2
+
+        junction_touch_count = sum(
+            1
+            for x1, y1, x2, y2 in lines
+            if _same_point((x1, y1), junction_pt) or _same_point((x2, y2), junction_pt)
+        )
+        assert junction_touch_count >= 3, (
+            f"Expected at least three branch segments landing on explicit junction {junction_pt}"
+        )
+
+        split_points: set[tuple[float, float]] = set()
+        for x1, y1, x2, y2 in lines:
+            split_points.add((round(x1, 2), round(y1, 2)))
+            split_points.add((round(x2, 2), round(y2, 2)))
+
+        for h in lines:
+            hx1, hy1, hx2, hy2 = h
+            if abs(hy1 - hy2) > 0.2:
+                continue
+            h_lo, h_hi = min(hx1, hx2), max(hx1, hx2)
+            for v in lines:
+                vx1, vy1, vx2, vy2 = v
+                if abs(vx1 - vx2) > 0.2:
+                    continue
+                v_lo, v_hi = min(vy1, vy2), max(vy1, vy2)
+                ix, iy = vx1, hy1
+                if h_lo - 0.2 <= ix <= h_hi + 0.2 and v_lo - 0.2 <= iy <= v_hi + 0.2:
+                    split_points.add((round(ix, 2), round(iy, 2)))
+
+        graph: dict[tuple[float, float], set[tuple[float, float]]] = defaultdict(set)
+        for seg in lines:
+            pts_on_seg = [point for point in split_points if _point_on_segment(point, seg)]
+            x1, y1, x2, y2 = seg
+            if abs(y1 - y2) <= 0.2:
+                pts_on_seg.sort(key=lambda point: point[0])
+            else:
+                pts_on_seg.sort(key=lambda point: point[1])
+            for idx in range(len(pts_on_seg) - 1):
+                a = pts_on_seg[idx]
+                b = pts_on_seg[idx + 1]
+                graph[a].add(b)
+                graph[b].add(a)
+
+        def _find_node(point: tuple[float, float]) -> tuple[float, float]:
+            for node in graph:
+                if _same_point(node, point):
+                    return node
+            raise AssertionError(f"No routed node found at {point}")
+
+        junction_node = _find_node(junction_pt)
+        branch_nodes = [_find_node(r1_p1), _find_node(r2_p2), _find_node(q1_b)]
+        seen: set[tuple[float, float]] = set()
+        queue = deque([junction_node])
+        while queue:
+            node = queue.popleft()
+            if node in seen:
+                continue
+            seen.add(node)
+            queue.extend(graph[node] - seen)
+        assert all(node in seen for node in branch_nodes), (
+            "Expected R1(1), R2(2), and Q1(B) branches to reach explicit junction target"
+        )
+
+        assert f">{junction.ref}<" in svg

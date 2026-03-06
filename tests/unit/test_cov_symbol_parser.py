@@ -155,8 +155,8 @@ class TestRectangleParsing:
         prim = symbols[0].primitives[0]
         xs = [p[0] for p in prim.points]
         ys = [p[1] for p in prim.points]
-        assert -2 in xs and 2 in xs
-        assert -1 in ys and 1 in ys
+        assert -12 in xs and 12 in xs
+        assert -6 in ys and 6 in ys
 
     def test_rectangle_with_fill_solid(self):
         """Rectangle with fill=solid is preserved."""
@@ -194,7 +194,7 @@ class TestCircleParsing:
         prim = symbols[0].primitives[0]
         assert prim.kind == "circle"
         assert len(prim.points) == 1
-        assert abs(prim.radius - 5.0) < 0.01
+        assert abs(prim.radius - 30.0) < 0.01
 
     def test_circle_center_coordinates(self):
         """Circle center coordinates are stored in points[0]."""
@@ -209,8 +209,8 @@ class TestCircleParsing:
         symbols = parse_kicad_sym_content(content, "test")
         assert symbols
         prim = symbols[0].primitives[0]
-        assert abs(prim.points[0][0] - 3.0) < 0.01
-        assert abs(prim.points[0][1] - (-4.0)) < 0.01
+        assert abs(prim.points[0][0] - 18.0) < 0.01
+        assert abs(prim.points[0][1] - (-24.0)) < 0.01
         assert prim.fill == "background"
 
 
@@ -251,9 +251,9 @@ class TestArcParsing:
         assert symbols
         prim = symbols[0].primitives[0]
         # Points: start, mid, end
-        assert abs(prim.points[0][0] - 1.0) < 0.01
-        assert abs(prim.points[1][0] - 3.0) < 0.01
-        assert abs(prim.points[2][0] - 5.0) < 0.01
+        assert abs(prim.points[0][0] - 6.0) < 0.01
+        assert abs(prim.points[1][0] - 18.0) < 0.01
+        assert abs(prim.points[2][0] - 30.0) < 0.01
 
 
 # ---------------------------------------------------------------------------
@@ -296,7 +296,7 @@ class TestPinParsing:
         symbols = parse_kicad_sym_content(content, "test")
         assert symbols
         pin = symbols[0].pins[0]
-        assert abs(pin.x - 2.54) < 0.01
+        assert abs(pin.x - 15.24) < 0.01
         assert pin.orientation == 270
 
     def test_pin_number_and_name(self):

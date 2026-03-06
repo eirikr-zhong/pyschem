@@ -6,6 +6,7 @@ vNext architecture: connections are driven by Pin.connect().
 from __future__ import annotations
 
 import itertools
+from functools import lru_cache
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Optional, Union, cast
 
@@ -28,6 +29,47 @@ def _generate_ref() -> str:
 
 # Counter for auto-generated NetLabel refs
 _net_label_counter = itertools.count(1)
+
+
+@lru_cache(maxsize=1)
+def _default_netlabel_symbol_data() -> "SymbolData":
+    """Return built-in SymbolData fallback for ``NetLabel``.
+
+    This keeps NetLabel rendering available even when external symbol
+    libraries are not configured.
+    """
+    from lib.symbols.data import PinDefinition, SymbolData, SymbolPrimitive
+
+    return SymbolData(
+        name="NetLabel",
+        lib="NetLabel",
+        pins=[
+            PinDefinition(
+                number="1",
+                name="~",
+                type="passive",
+                x=0.0,
+                y=0.0,
+                orientation=180,
+                length=15.24,
+            ),
+        ],
+        primitives=[
+            SymbolPrimitive(
+                kind="polygon",
+                points=[
+                    (0.0, 0.0),
+                    (8.0, -6.0),
+                    (34.0, -6.0),
+                    (34.0, 6.0),
+                    (8.0, 6.0),
+                    (0.0, 0.0),
+                ],
+                stroke_width=1.2,
+                fill="background",
+            ),
+        ],
+    )
 
 
 @dataclass
@@ -231,16 +273,14 @@ class NetLabel(Part):
 
     Render semantics
     ~~~~~~~~~~~~~~~~
-    The renderer draws a **flag label** at the NetLabel's pin endpoint
-    (similar to KiCad net-label flags).  No wire is drawn *to* the
-    NetLabel component itself — only between the other (non-NetLabel)
-    pins in the same net.
+    ``NetLabel`` now renders through the standard symbol pipeline like
+    any other :class:`Part`.
 
     Attributes:
         net_name:  The net name this label assigns (e.g. ``"VCC"``,
                    ``"GND"``).
         direction: Visual direction of the flag label.
-                   One of ``"left"``, ``"right"``, ``"up"``, ``"down"``.
+                   One of ``"left"``, ``"right"``, ``"top"``, ``"bottom"``.
     """
 
     net_name: str
@@ -256,17 +296,30 @@ class NetLabel(Part):
         self.net_name = name
         self.direction = direction
         super().__init__(
-            lib_id="power:NetLabel",
+            lib_id="NetLabel:NetLabel",
             ref=ref or f"#NL{next(_net_label_counter)}",
             value=name,
         )
-        # Pre-create the single pin
+        if self._symbol_data is None:
+            try:
+                from lib.symbols import get_default_symbols
+
+                symbols = get_default_symbols()
+                if symbols is not None:
+                    from_library = symbols.get_symbol("net_labels", "NetLabel")
+                    if from_library is not None:
+                        self.attach_symbol(from_library)
+            except Exception:
+                pass
+        if self._symbol_data is None:
+            self.attach_symbol(_default_netlabel_symbol_data())
+        # Pre-create the single pin.
         self.pin("1")
 
     @property
     def label_pin(self) -> Pin:
         """The single connection pin of this NetLabel."""
-        return self.pin("1")
+        return self.pins["1"]
 
 
 def parse_pins(part: "Part", pin_spec: str) -> list[Pin]:

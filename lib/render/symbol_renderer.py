@@ -28,7 +28,6 @@ class _DrawStyle:
     pin_stub_width: float = 1.5
     pin_text_fill: str = "#333"
     value_text_fill: str = "#555"
-    symbol_scale: float = 1.0
     ref_text: TextPlacementStyle = field(default_factory=TextPlacementStyle.default_ref)
     value_text: TextPlacementStyle = field(default_factory=TextPlacementStyle.default_value)
     pin_name_visible: bool = True
@@ -47,7 +46,6 @@ class SymbolRenderer:
         pin_stub_width: float = 1.5,
         pin_text_fill: str = "#333",
         value_text_fill: str = "#555",
-        symbol_scale: float = 1.0,
         ref_text_style: TextPlacementStyle | None = None,
         value_text_style: TextPlacementStyle | None = None,
         pin_name_visible: bool = True,
@@ -62,7 +60,6 @@ class SymbolRenderer:
             pin_stub_width=pin_stub_width,
             pin_text_fill=pin_text_fill,
             value_text_fill=value_text_fill,
-            symbol_scale=max(0.1, float(symbol_scale)),
             ref_text=(
                 ref_default.merge(ref_text_style)
                 if ref_text_style is not None
@@ -176,7 +173,7 @@ class SymbolRenderer:
 
         endpoint_by_alias: dict[str, tuple[float, float]] = {}
         for pin in symbol.pins:
-            px, py = self._pin_endpoint_local(pin, scale=self._style.symbol_scale)
+            px, py = self._pin_endpoint_local(pin)
             endpoint_by_alias[pin.number] = (px, py)
             if pin.name and pin.name != "~":
                 endpoint_by_alias[pin.name] = (px, py)
@@ -254,22 +251,20 @@ class SymbolRenderer:
         fill = self._primitive_fill(primitive.fill)
         kind = primitive.kind.lower()
 
-        s = self._style.symbol_scale
-
         if kind == "line" and len(primitive.points) >= 2:
             (x1, y1), (x2, y2) = primitive.points[0], primitive.points[1]
             canvas.line(
-                cx + x1 * s,
-                cy + y1 * s,
-                cx + x2 * s,
-                cy + y2 * s,
+                cx + x1,
+                cy + y1,
+                cx + x2,
+                cy + y2,
                 stroke=stroke,
                 stroke_width=stroke_width,
             )
             return
 
         if kind in {"polyline", "polygon"} and len(primitive.points) >= 2:
-            points = [(cx + x * s, cy + y * s) for x, y in primitive.points]
+            points = [(cx + x, cy + y) for x, y in primitive.points]
             is_closed = kind == "polygon" or (points[0] == points[-1])
             if is_closed:
                 canvas.polygon(points, stroke=stroke, stroke_width=stroke_width, fill=fill)
@@ -280,9 +275,9 @@ class SymbolRenderer:
         if kind == "circle" and primitive.points and primitive.radius is not None:
             cx0, cy0 = primitive.points[0]
             canvas.circle(
-                cx + cx0 * s,
-                cy + cy0 * s,
-                primitive.radius * s,
+                cx + cx0,
+                cy + cy0,
+                primitive.radius,
                 stroke=stroke,
                 stroke_width=stroke_width,
                 fill=fill,
@@ -292,17 +287,17 @@ class SymbolRenderer:
         if kind == "arc" and len(primitive.points) >= 3:
             (sx, sy), (mx, my), (ex, ey) = primitive.points[0:3]
             d = (
-                f"M {cx + sx * s:.3f} {cy + sy * s:.3f} "
-                f"Q {cx + mx * s:.3f} {cy + my * s:.3f} {cx + ex * s:.3f} {cy + ey * s:.3f}"
+                f"M {cx + sx:.3f} {cy + sy:.3f} "
+                f"Q {cx + mx:.3f} {cy + my:.3f} {cx + ex:.3f} {cy + ey:.3f}"
             )
             canvas._elements.append(
                 f'<path d="{d}" fill="none" stroke="{stroke}" stroke-width="{stroke_width}"/>'
             )
             track = getattr(canvas, "_track", None)
             if callable(track):
-                track(cx + sx * s, cy + sy * s)
-                track(cx + mx * s, cy + my * s)
-                track(cx + ex * s, cy + ey * s)
+                track(cx + sx, cy + sy)
+                track(cx + mx, cy + my)
+                track(cx + ex, cy + ey)
 
     def _draw_pin_stub_and_label(
         self,
@@ -313,9 +308,8 @@ class SymbolRenderer:
         *,
         font_pin: float,
     ) -> None:
-        s = self._style.symbol_scale
-        end_x, end_y = self._pin_endpoint_local(pin, scale=s)
-        root_x, root_y = self._pin_stub_inner_local(pin, scale=s)
+        end_x, end_y = self._pin_endpoint_local(pin)
+        root_x, root_y = self._pin_stub_inner_local(pin)
 
         if abs(root_x - end_x) > 0.01 or abs(root_y - end_y) > 0.01:
             canvas.line(
@@ -366,8 +360,7 @@ class SymbolRenderer:
         *,
         font_pin: float = 10.0,
     ) -> tuple[float, float, str]:
-        scale = max(1.0, self._style.symbol_scale)
-        offset = max(8.0, font_pin * 0.8 + (scale - 1.0) * 2.5)
+        offset = max(8.0, font_pin * 0.8)
         dx = end_x - root_x
         dy = end_y - root_y
         length = math.hypot(dx, dy)
@@ -493,10 +486,8 @@ class SymbolRenderer:
         return (dx * c - dy * s, dx * s + dy * c)
 
     def _symbol_body_bbox(self, symbol: SymbolData) -> tuple[float, float, float, float] | None:
-        s = self._style.symbol_scale
         if symbol.bounding_box is not None:
-            x0, y0, x1, y1 = symbol.bounding_box
-            return (x0 * s, y0 * s, x1 * s, y1 * s)
+            return symbol.bounding_box
 
         xs: list[float] = []
         ys: list[float] = []
@@ -506,16 +497,16 @@ class SymbolRenderer:
             if kind == "circle" and primitive.points and primitive.radius is not None:
                 cx0, cy0 = primitive.points[0]
                 r = primitive.radius
-                xs.extend([(cx0 - r) * s, (cx0 + r) * s])
-                ys.extend([(cy0 - r) * s, (cy0 + r) * s])
+                xs.extend([cx0 - r, cx0 + r])
+                ys.extend([cy0 - r, cy0 + r])
             else:
                 for x, y in primitive.points:
-                    xs.append(x * s)
-                    ys.append(y * s)
+                    xs.append(x)
+                    ys.append(y)
 
         for pin in symbol.pins:
-            outer_x, outer_y = self._pin_endpoint_local(pin, scale=s)
-            inner_x, inner_y = self._pin_stub_inner_local(pin, scale=s)
+            outer_x, outer_y = self._pin_endpoint_local(pin)
+            inner_x, inner_y = self._pin_stub_inner_local(pin)
             xs.extend([outer_x, inner_x])
             ys.extend([outer_y, inner_y])
 
@@ -524,20 +515,20 @@ class SymbolRenderer:
         return (min(xs), min(ys), max(xs), max(ys))
 
     @staticmethod
-    def _pin_endpoint_local(pin: PinDefinition, *, scale: float = 1.0) -> tuple[float, float]:
+    def _pin_endpoint_local(pin: PinDefinition) -> tuple[float, float]:
         """Return the electrical connection point (outer pin endpoint)."""
-        return (pin.x * scale, pin.y * scale)
+        return (pin.x, pin.y)
 
     @staticmethod
-    def _pin_stub_inner_local(pin: PinDefinition, *, scale: float = 1.0) -> tuple[float, float]:
+    def _pin_stub_inner_local(pin: PinDefinition) -> tuple[float, float]:
         """Return the symbol-body side endpoint of the drawn pin stub."""
         if pin.length <= 0:
-            return (pin.x * scale, pin.y * scale)
+            return (pin.x, pin.y)
 
         orientation = pin.orientation % 360
-        lx = pin.length * scale
-        px = pin.x * scale
-        py = pin.y * scale
+        lx = pin.length
+        px = pin.x
+        py = pin.y
         rad = math.radians(orientation)
         return (
             px + lx * math.cos(rad),

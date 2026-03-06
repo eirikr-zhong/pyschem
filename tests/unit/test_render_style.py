@@ -143,11 +143,6 @@ class TestRenderStyle:
     def test_RS13_default_fields(self):
         """RS-13: RenderStyle.default() returns fully-specified values."""
         rs = RenderStyle.default()
-        assert rs.canvas_scale_mode == "auto"
-        assert rs.canvas_scale == 1.0
-        assert rs.canvas_scale_min == 1.0
-        assert rs.canvas_scale_max == 6.0
-        assert rs.canvas_target_min_font_px == 12.0
         assert rs.background == "#ffffff"
         assert rs.ref_font_size == 14.0
         assert rs.value_font_size == 11.0
@@ -158,7 +153,6 @@ class TestRenderStyle:
         assert isinstance(rs.symbol, SymbolStyle)
         assert isinstance(rs.ref_text, TextPlacementStyle)
         assert isinstance(rs.value_text, TextPlacementStyle)
-        assert rs.symbol.scale == 1.0
         assert rs.ref_text.position == "right"
         assert rs.ref_text.offset == 4.0
         assert rs.ref_text.visible is True
@@ -176,11 +170,6 @@ class TestRenderStyle:
         assert rs.symbol is None
         assert rs.ref_text is None
         assert rs.value_text is None
-        assert rs.canvas_scale_mode is None
-        assert rs.canvas_scale is None
-        assert rs.canvas_scale_min is None
-        assert rs.canvas_scale_max is None
-        assert rs.canvas_target_min_font_px is None
         assert rs.background is None
 
     def test_RS15_merge_scalar_field(self):
@@ -251,9 +240,9 @@ class TestRenderStyle:
     def test_RS22b_merge_symbol_sub_style(self):
         """RS-22b: RenderStyle.merge() recursively merges SymbolStyle."""
         base = RenderStyle.default()
-        override = RenderStyle(symbol=SymbolStyle(scale=1.8))
+        override = RenderStyle(symbol=SymbolStyle())
         merged = base.merge(override)
-        assert merged.symbol.scale == 1.8
+        assert isinstance(merged.symbol, SymbolStyle)
 
     def test_RS22c_merge_ref_text_sub_style(self):
         """RS-22c: RenderStyle.merge() recursively merges ref_text style."""
@@ -287,37 +276,3 @@ class TestRenderStyle:
             assert value is not None, f"Found None at {path}"
 
         _walk(rs)
-
-    def test_RS24_merge_canvas_scale_scalar(self):
-        """RS-24: RenderStyle.merge() applies canvas_scale as scalar override."""
-        base = RenderStyle.default()
-        merged = base.merge(RenderStyle(canvas_scale=2.0))
-        assert merged.canvas_scale == 2.0
-        assert base.canvas_scale == 1.0
-
-    def test_RS25_merge_canvas_scale_none_keeps_base(self):
-        """RS-25: RenderStyle.merge() keeps base canvas_scale when override is None."""
-        base = RenderStyle.default()
-        merged = base.merge(RenderStyle(background="#101010"))
-        assert merged.canvas_scale == 1.0
-
-    def test_RS26_merge_canvas_scale_mode_scalar(self):
-        """RS-26: RenderStyle.merge() applies canvas_scale_mode as scalar override."""
-        base = RenderStyle.default()
-        merged = base.merge(RenderStyle(canvas_scale_mode="fixed"))
-        assert merged.canvas_scale_mode == "fixed"
-        assert base.canvas_scale_mode == "auto"
-
-    def test_RS27_merge_canvas_scale_legacy_override_forces_fixed_mode(self):
-        """RS-27: canvas_scale override without mode keeps legacy fixed behaviour."""
-        base = RenderStyle.default()
-        merged = base.merge(RenderStyle(canvas_scale=2.0))
-        assert merged.canvas_scale == 2.0
-        assert merged.canvas_scale_mode == "fixed"
-
-    def test_RS28_merge_canvas_scale_with_explicit_auto_mode_kept(self):
-        """RS-28: Explicit auto mode is preserved even when canvas_scale is provided."""
-        base = RenderStyle.default()
-        merged = base.merge(RenderStyle(canvas_scale=2.0, canvas_scale_mode="auto"))
-        assert merged.canvas_scale == 2.0
-        assert merged.canvas_scale_mode == "auto"

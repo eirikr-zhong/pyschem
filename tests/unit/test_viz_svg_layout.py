@@ -29,7 +29,6 @@ import lib.symbols.symbols as _sym_mod
 from lib.core.part import NetLabel
 from lib.core.part import Part
 from lib.core.page import PageConfig
-from lib.core.render_style import RenderStyle
 from lib.core.schematic import Schematic
 from lib.core.style import Style
 from lib.symbols import configure_default_symbols
@@ -59,19 +58,6 @@ def _extract_svg_dims(svg: str) -> tuple[float, float]:
     m = re.search(r'<svg[^>]*width="([^"]+)"[^>]*height="([^"]+)"', svg)
     assert m, "No width/height on SVG root"
     return float(m.group(1)), float(m.group(2))
-
-
-def _default_auto_scale() -> float:
-    style = RenderStyle.default()
-    baseline = min(
-        style.ref_font_size,
-        style.net_font_size,
-        style.value_font_size,
-        style.pin_font_size,
-        style.label_net.font_size,
-    )
-    raw = style.canvas_target_min_font_px / baseline
-    return max(style.canvas_scale_min, min(style.canvas_scale_max, raw))
 
 
 def _extract_polylines(svg: str) -> list[str]:
@@ -205,14 +191,10 @@ class TestNetLabelPlacement:
         assert count >= 1, "VCC label not found in SVG"
 
     def test_net_label_halo_rect_present(self):
-        """LABEL-02: a white halo <rect> is emitted for named net wire labels."""
+        """LABEL-02: NetLabel symbol flow does not emit wire-label halo rectangles."""
         sch = _make_two_resistors()
         svg = sch.get_svg_string()
-        # The halo rect is injected directly into _elements as a raw string
-        # containing opacity attribute from _draw_net_label
-        assert 'opacity="0.85"' in svg, (
-            "Expected halo rect with opacity='0.85' for net wire labels"
-        )
+        assert 'opacity="0.85"' not in svg
 
     def test_anonymous_net_no_label(self):
         """LABEL-03: anonymous net produces no _anon text in SVG."""
@@ -325,13 +307,12 @@ class TestCompat:
         assert "</svg>" in svg
 
     def test_page_dimensions_preserved(self):
-        """COMPAT-04: custom page dimensions are reflected with adaptive scaling."""
+        """COMPAT-04: custom page dimensions are reflected exactly."""
         page = PageConfig(width=1200, height=900)
         sch = Schematic("compat_page")
         r1 = Part("Device:R", ref="R1")
         sch.add_part(r1)
         svg = sch.get_svg_string(page=page)
         width, height = _extract_svg_dims(svg)
-        scale = _default_auto_scale()
-        assert width == pytest.approx(page.width * scale)
-        assert height == pytest.approx(page.height * scale)
+        assert width == pytest.approx(page.width)
+        assert height == pytest.approx(page.height)

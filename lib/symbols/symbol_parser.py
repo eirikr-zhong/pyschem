@@ -14,6 +14,9 @@ from parsimonious import Grammar, NodeVisitor, ParseError
 from lib.symbols.data import PinDefinition, SymbolData, SymbolPrimitive
 
 
+_SYMBOL_COORD_SCALE = 6.0
+
+
 # ==============================================================================
 # SECTION 1: PARSIMONIOUS GRAMMAR DEFINITION
 # ==============================================================================
@@ -127,6 +130,10 @@ KICAD_SYM_GRAMMAR = Grammar(r"""
 
 class KicadSymVisitor(NodeVisitor):
     """Transform parse tree into SymbolData objects."""
+
+    def __init__(self, *, scale_factor: float = _SYMBOL_COORD_SCALE):
+        super().__init__()
+        self._scale_factor = float(scale_factor)
 
     # ------------------------------------------------------------------ library
 
@@ -278,14 +285,14 @@ class KicadSymVisitor(NodeVisitor):
 
     def visit_at_expr(self, node, children):
         nums = [c for c in self._flatten(children) if isinstance(c, float)]
-        x = nums[0] if len(nums) > 0 else 0.0
-        y = nums[1] if len(nums) > 1 else 0.0
+        x = (nums[0] if len(nums) > 0 else 0.0) * self._scale_factor
+        y = (nums[1] if len(nums) > 1 else 0.0) * self._scale_factor
         o = int(nums[2]) if len(nums) > 2 else 0
         return {"_kind": "at", "pos": (x, y, o)}
 
     def visit_length_expr(self, node, children):
         nums = [c for c in self._flatten(children) if isinstance(c, float)]
-        return {"_kind": "length", "value": nums[0] if nums else 0.0}
+        return {"_kind": "length", "value": (nums[0] if nums else 0.0) * self._scale_factor}
 
     # ---------------------------------------------------------------- name/number expr
 
@@ -432,36 +439,36 @@ class KicadSymVisitor(NodeVisitor):
     def visit_xy_expr(self, node, children):
         nums = [c for c in self._flatten(children) if isinstance(c, float)]
         if len(nums) >= 2:
-            return {"_kind": "xy", "point": (nums[0], nums[1])}
+            return {"_kind": "xy", "point": (nums[0] * self._scale_factor, nums[1] * self._scale_factor)}
         return {"_kind": "xy", "point": (0.0, 0.0)}
 
     def visit_start_expr(self, node, children):
         nums = [c for c in self._flatten(children) if isinstance(c, float)]
         if len(nums) >= 2:
-            return {"_kind": "start", "point": (nums[0], nums[1])}
+            return {"_kind": "start", "point": (nums[0] * self._scale_factor, nums[1] * self._scale_factor)}
         return {"_kind": "start", "point": (0.0, 0.0)}
 
     def visit_mid_expr(self, node, children):
         nums = [c for c in self._flatten(children) if isinstance(c, float)]
         if len(nums) >= 2:
-            return {"_kind": "mid", "point": (nums[0], nums[1])}
+            return {"_kind": "mid", "point": (nums[0] * self._scale_factor, nums[1] * self._scale_factor)}
         return {"_kind": "mid", "point": (0.0, 0.0)}
 
     def visit_end_expr(self, node, children):
         nums = [c for c in self._flatten(children) if isinstance(c, float)]
         if len(nums) >= 2:
-            return {"_kind": "end", "point": (nums[0], nums[1])}
+            return {"_kind": "end", "point": (nums[0] * self._scale_factor, nums[1] * self._scale_factor)}
         return {"_kind": "end", "point": (0.0, 0.0)}
 
     def visit_center_expr(self, node, children):
         nums = [c for c in self._flatten(children) if isinstance(c, float)]
         if len(nums) >= 2:
-            return {"_kind": "center", "point": (nums[0], nums[1])}
+            return {"_kind": "center", "point": (nums[0] * self._scale_factor, nums[1] * self._scale_factor)}
         return {"_kind": "center", "point": (0.0, 0.0)}
 
     def visit_radius_expr(self, node, children):
         nums = [c for c in self._flatten(children) if isinstance(c, float)]
-        return {"_kind": "radius", "value": nums[0] if nums else 0.0}
+        return {"_kind": "radius", "value": (nums[0] if nums else 0.0) * self._scale_factor}
 
     def visit_stroke_expr(self, node, children):
         width = 0.254
@@ -543,19 +550,28 @@ class KicadSymVisitor(NodeVisitor):
 # SECTION 3: PUBLIC API
 # ==============================================================================
 
-def parse_kicad_sym_file(file_path: Path) -> list[SymbolData]:
+def parse_kicad_sym_file(
+    file_path: Path,
+    *,
+    scale_factor: float = _SYMBOL_COORD_SCALE,
+) -> list[SymbolData]:
     """Parse a KiCad symbol library file (.kicad_sym)."""
     if not file_path.exists():
         raise FileNotFoundError(f"Symbol library not found: {file_path}")
     content = file_path.read_text(encoding="utf-8")
-    return parse_kicad_sym_content(content, file_path.stem)
+    return parse_kicad_sym_content(content, file_path.stem, scale_factor=scale_factor)
 
 
-def parse_kicad_sym_content(content: str, lib_name: str) -> list[SymbolData]:
+def parse_kicad_sym_content(
+    content: str,
+    lib_name: str,
+    *,
+    scale_factor: float = _SYMBOL_COORD_SCALE,
+) -> list[SymbolData]:
     """Parse KiCad symbol library content."""
     try:
         tree = KICAD_SYM_GRAMMAR.parse(content)
-        visitor = KicadSymVisitor()
+        visitor = KicadSymVisitor(scale_factor=scale_factor)
         symbols = visitor.visit(tree) or []
         # visitor.visit may return a nested list due to generic_visit on library
         if isinstance(symbols, list):
@@ -577,13 +593,17 @@ def parse_kicad_sym_content(content: str, lib_name: str) -> list[SymbolData]:
         raise ValueError(f"Failed to parse {lib_name}: {e}") from e
 
 
-def parse_kicad_sym_file_safe(file_path: Path) -> tuple[list[SymbolData], Optional[str]]:
+def parse_kicad_sym_file_safe(
+    file_path: Path,
+    *,
+    scale_factor: float = _SYMBOL_COORD_SCALE,
+) -> tuple[list[SymbolData], Optional[str]]:
     """Parse with error handling."""
     if not file_path.exists():
         return ([], f"File not found: {file_path}")
     try:
         content = file_path.read_text(encoding="utf-8")
-        symbols = parse_kicad_sym_content(content, file_path.stem)
+        symbols = parse_kicad_sym_content(content, file_path.stem, scale_factor=scale_factor)
         return (symbols, None)
     except Exception as e:
         return ([], f"Parse error in {file_path.name}: {e}")

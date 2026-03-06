@@ -90,7 +90,6 @@ from typing import TYPE_CHECKING, List, Optional, Tuple, TypeVar
 from lib.core.render_style import (
     BoxStyle,
     HaloStyle,
-    NetLabelStyle,
     PinStyle,
     RenderTemplate as _RenderTemplateT,
     TextPlacementStyle,
@@ -117,8 +116,8 @@ _ROW_HEIGHT = 140       # auto-layout: vertical spacing between parts in a colum
 _PARTS_PER_COL = 4      # max parts per column before wrapping to a new column
 
 # Obstacle avoidance
-_OBSTACLE_CLEARANCE = 1  # reduced from 6 to allow tighter routing near components
-_SYMBOL_AMPLIFICATION = 6.0
+_OBSTACLE_CLEARANCE = -2.0  # temporary plan-2 tuning: shrink obstacle box by 3px vs prior +1.0
+_OBSTACLE_HORIZONTAL_EXTRA = 1.0  # widen obstacle boxes by +1px per side (x only)
 
 # Cross-net wire avoidance
 _WIRE_SEG_CLEARANCE = 4   # px clearance zone around each drawn wire segment
@@ -129,10 +128,6 @@ _T = TypeVar("_T")
 
 def _default_wire_style() -> WireStyle:
     return WireStyle.default()
-
-
-def _default_net_label_style() -> NetLabelStyle:
-    return NetLabelStyle.default()
 
 
 def _default_halo_style() -> HaloStyle:
@@ -185,9 +180,9 @@ def _symbol_renderer_from_style(style: Style) -> SymbolRenderer:
 class _Obstacle:
     """Axis-aligned bounding box used for wire obstacle avoidance.
 
-    The box is expanded by *clearance* on all sides relative to the raw
-    component bounding box so that wires do not pass right along the body
-    edge.
+    The box is expanded by *clearance* on top/bottom and by an additional
+    horizontal margin on left/right so that wires keep a little more distance
+    from vertical body edges.
     """
 
     __slots__ = ("x0", "y0", "x1", "y1")
@@ -200,9 +195,10 @@ class _Obstacle:
         y1: float,
         clearance: float = _OBSTACLE_CLEARANCE,
     ) -> None:
-        self.x0 = x0 - clearance
+        horizontal_clearance = clearance + _OBSTACLE_HORIZONTAL_EXTRA
+        self.x0 = x0 - horizontal_clearance
         self.y0 = y0 - clearance
-        self.x1 = x1 + clearance
+        self.x1 = x1 + horizontal_clearance
         self.y1 = y1 + clearance
 
     def contains_point(self, x: float, y: float) -> bool:
@@ -476,7 +472,6 @@ def render_schematic_svg(
     canvas_style = resolve_style(None, tmpl)
 
     wire_style: WireStyle = canvas_style.wire or _default_wire_style()
-    ln_style: NetLabelStyle = canvas_style.label_net or _default_net_label_style()
     halo_style: HaloStyle = canvas_style.halo or _default_halo_style()
     pin_style: PinStyle = canvas_style.pin or _default_pin_style()
 
@@ -486,18 +481,6 @@ def render_schematic_svg(
     junction_r: float = _style_value(wire_style.junction_radius, field_name="wire.junction_radius")
     junction_color: str = _style_value(wire_style.junction_color, field_name="wire.junction_color")
     wire_dash: str = _style_value(wire_style.dash, field_name="wire.dash")
-
-    ln_color: str = _style_value(ln_style.color, field_name="label_net.color")
-    ln_font_size: float = _style_value(ln_style.font_size, field_name="label_net.font_size")
-    ln_font_style: str = _style_value(ln_style.font_style, field_name="label_net.font_style")
-    ln_overline: bool = _style_value(ln_style.overline, field_name="label_net.overline")
-    ln_body_fill: str = _style_value(ln_style.body_fill, field_name="label_net.body_fill")
-    ln_body_stroke_width: float = _style_value(
-        ln_style.body_stroke_width, field_name="label_net.body_stroke_width"
-    )
-    ln_stem_stroke_width: float = _style_value(
-        ln_style.stem_stroke_width, field_name="label_net.stem_stroke_width"
-    )
 
     halo_fill: str = _style_value(halo_style.fill, field_name="halo.fill")
     halo_opacity: str = _style_value(halo_style.opacity, field_name="halo.opacity")
@@ -541,15 +524,26 @@ def render_schematic_svg(
     parts = schematic.parts
     resolved_part_styles: dict[str, Style] = {}
     for idx, part in enumerate(parts):
-        if isinstance(part, NetLabel):
-            continue
         ref = part.ref or f"_part{idx}"
-        resolved_part_styles[ref] = resolve_style(part, tmpl)
+        part_style = resolve_style(part, tmpl)
+        if isinstance(part, NetLabel):
+            part_style = part_style.merge(
+                Style(
+                    rotation=_netlabel_rotation(part.direction, fallback=part_style.rotation),
+                    ref_text=TextPlacementStyle(visible=False),
+                    value_text=TextPlacementStyle(
+                        position="center",
+                        offset=0.0,
+                        visible=True,
+                        rotation_mode="component",
+                    ),
+                    pin=PinStyle(pin_name_visible=False, pin_value_visible=False),
+                )
+            )
+        resolved_part_styles[ref] = part_style
 
     positions: dict[str, tuple[float, float]] = {}
     for idx, part in enumerate(parts):
-        if isinstance(part, NetLabel):
-            continue
         ref = part.ref or f"_part{idx}"
         cx, cy = _part_position(
             part,
@@ -565,7 +559,7 @@ def render_schematic_svg(
     obstacles: list[_Obstacle] = []
     debug_component_obstacles: list[tuple[str, _Obstacle]] = []
     for idx, part in enumerate(parts):
-        if isinstance(part, (NetLabel, Junction)):
+        if isinstance(part, Junction):
             continue
         ref = part.ref or f"_part{idx}"
         part_style = resolved_part_styles[ref]
@@ -590,8 +584,6 @@ def render_schematic_svg(
     # pin_endpoints[(part_ref, pin_key)] = (px, py)
     pin_endpoints: dict[tuple[str, str], tuple[float, float]] = {}
     for idx, part in enumerate(parts):
-        if isinstance(part, NetLabel):
-            continue
         ref = part.ref or f"_part{idx}"
         part_style = resolved_part_styles[ref]
         part_renderer = _symbol_renderer_from_style(part_style)
@@ -623,48 +615,74 @@ def render_schematic_svg(
     derived_nets = derive_nets(list(schematic._parts))
     # Keep per-connected-component net endpoints separate even when names are equal
     # (e.g. two independent "VCC" islands must NOT be merged into one routed wire).
-    net_components: list[tuple[str, list[tuple[float, float]]]] = []
-    label_net_pin_endpoints: list[tuple[str, tuple[float, float], str, str]] = []
+    net_components: list[tuple[str, list[tuple[float, float]], bool]] = []
 
     # Build a lookup from Pin identity to its NetLabel owner (if any)
     netlabel_parts = [p for p in schematic._parts if isinstance(p, NetLabel)]
 
+    def _netlabel_component_endpoint(
+        netlabel: NetLabel,
+        component_pin_ids: set[int],
+    ) -> tuple[float, float] | None:
+        """Return NetLabel endpoint when it belongs to the target component."""
+        label_pin = netlabel.label_pin
+        label_key = (label_pin.part_ref, label_pin.key)
+        label_endpoint = pin_endpoints.get(label_key)
+        if label_endpoint is None:
+            return None
+
+        visited: set[int] = set()
+        queue = [label_pin]
+        while queue:
+            current = queue.pop(0)
+            current_id = id(current)
+            if current_id in visited:
+                continue
+            visited.add(current_id)
+            if current_id in component_pin_ids:
+                return label_endpoint
+            for neighbor in current.connected_pins:
+                if id(neighbor) not in visited:
+                    queue.append(neighbor)
+        return None
+
     for net in derived_nets:
         pts: list[tuple[float, float]] = []
+        component_pin_ids = {id(pin) for pin in net.pins}
         for pin in net.pins:
             key = (pin.part_ref, pin.key)
             if key in pin_endpoints:
                 pts.append(pin_endpoints[key])
 
-        if pts:
-            net_components.append((net.name, pts))
+        had_single_real_endpoint = len(pts) <= 1
+        if had_single_real_endpoint:
+            # NetLabel pins are intentionally excluded from derive_nets()
+            # results, but their endpoints must still participate in rendering
+            # so one-pin named nets visibly connect to their label flag.
+            for netlabel in netlabel_parts:
+                if netlabel.net_name != net.name:
+                    continue
+                label_endpoint = _netlabel_component_endpoint(netlabel, component_pin_ids)
+                if label_endpoint is not None:
+                    pts.append(label_endpoint)
 
-    # Collect NetLabel flag label endpoints
+        pts = list(dict.fromkeys(pts))
+        if pts:
+            net_components.append((net.name, pts, had_single_real_endpoint))
+
+    # Collect component endpoints that are explicitly covered by a NetLabel
+    # symbol so wire-level labels can be suppressed for those endpoints.
+    label_net_pin_endpoints: list[tuple[str, tuple[float, float]]] = []
     for nl in netlabel_parts:
         nl_pin = nl.label_pin
-        # Find pins connected to this NetLabel's pin
         for connected_pin in nl_pin.connected_pins:
             key = (connected_pin.part_ref, connected_pin.key)
             if key not in pin_endpoints:
                 continue
-            pt = pin_endpoints[key]
-            pcx, _ = positions.get(connected_pin.part_ref, (pt[0], pt[1]))
-            # Determine placement side from NetLabel.direction.
-            # Supported: left/right/top/bottom (aliases: up->top, down->bottom).
-            d = (nl.direction or "").lower()
-            auto_side = "right" if pt[0] <= pcx else "left"
-            if d in {"left", "right", "top", "bottom"}:
-                side = d
-            elif d == "up":
-                side = "top"
-            elif d == "down":
-                side = "bottom"
-            else:
-                side = auto_side
-            label_net_pin_endpoints.append((nl.net_name, pt, side, auto_side))
+            label_net_pin_endpoints.append((nl.net_name, pin_endpoints[key]))
 
     flagged_endpoints_by_net: dict[str, set[tuple[float, float]]] = {}
-    for net_name, pt, _, _ in label_net_pin_endpoints:
+    for net_name, pt in label_net_pin_endpoints:
         flagged_endpoints_by_net.setdefault(net_name, set()).add(pt)
 
     # --- Phase 4: draw into a tracking canvas -------------------------------
@@ -676,8 +694,6 @@ def render_schematic_svg(
 
     # Draw all symbols
     for idx, part in enumerate(parts):
-        if isinstance(part, NetLabel):
-            continue
         ref = part.ref or f"_part{idx}"
         part_style = resolved_part_styles[ref]
         part_box_style = part_style.box or _default_box_style()
@@ -753,8 +769,8 @@ def render_schematic_svg(
     # chance to detect and avoid the already-drawn wire segments.
     drawn_segs: list[_WireSegment] = []
     debug_trunks: list[tuple[float, float, float]] = []
-    sorted_net_items = sorted(net_components, key=lambda kv: len(kv[1]))
-    for net_name, pts in sorted_net_items:
+    sorted_net_items = sorted(net_components, key=lambda kv: (kv[2], len(kv[1])))
+    for net_name, pts, _ in sorted_net_items:
         flagged_points = flagged_endpoints_by_net.get(net_name, set())
         show_wire_label = not any(point in flagged_points for point in pts)
         _draw_wire_net(
@@ -779,135 +795,6 @@ def render_schematic_svg(
             stroke_width=0,
             fill=junction_color,
         )
-
-    # Draw NetLabel flag labels (one per pin, no wire routing).
-    # All side='left' labels share a unified tip_x so their bodies align
-    # to the same vertical column (avoids ragged stagger across pin offsets).
-    _left_xs = [pt[0] for _, pt, side, _ in label_net_pin_endpoints if side == "left"]
-    left_align_x: float | None = max(_left_xs) if _left_xs else None
-
-    seen_label_pts: set[tuple[float, float]] = set()
-    occupied_label_boxes: list[tuple[float, float, float, float]] = []
-    extra_label_clearance = max(
-        0.0,
-        max(font_ref, font_value, font_pin) * 0.5
-        + (_SYMBOL_AMPLIFICATION - 1.0) * font_pin,
-    )
-    flag_obstacles: list[_Obstacle] = list(obstacles)
-    if extra_label_clearance > 0.0:
-        for obs in obstacles:
-            flag_obstacles.append(
-                _Obstacle(obs.x0, obs.y0, obs.x1, obs.y1, clearance=extra_label_clearance)
-            )
-
-    row_step = max(ln_font_size + 4.0, font_pin + 2.0)
-    row_offsets = [0.0, row_step, -row_step, row_step * 2.0, -row_step * 2.0]
-    for net_name, pt, side, auto_side in label_net_pin_endpoints:
-        if pt not in seen_label_pts:
-            seen_label_pts.add(pt)
-            selected_side = side
-            selected_align_x = left_align_x if selected_side == "left" else None
-            selected_y = pt[1]
-
-            # Keep labels from sitting on component bodies:
-            # 1) preferred side  2) auto side  3) opposite side  4) vertical fallback
-            opposite_side = "left" if side == "right" else "right"
-            candidate_sides: list[str] = [side, auto_side, opposite_side, "top", "bottom"]
-            unique_candidates: list[str] = []
-            for candidate in candidate_sides:
-                if candidate not in unique_candidates:
-                    unique_candidates.append(candidate)
-
-            placed = False
-            for candidate in unique_candidates:
-                candidate_align_x = left_align_x if candidate == "left" else None
-                for y_offset in row_offsets:
-                    trial_y = pt[1] + y_offset
-                    if _flag_label_hits_obstacles(
-                        pt[0], trial_y, net_name,
-                        side=candidate, align_x=candidate_align_x,
-                        obstacles=flag_obstacles, ln_font_size=ln_font_size,
-                    ):
-                        continue
-                    trial_box = _flag_label_box(
-                        pt[0], trial_y, net_name,
-                        side=candidate,
-                        ln_font_size=ln_font_size,
-                        halo_pad=halo_pad,
-                        align_x=candidate_align_x,
-                    )
-                    if _boxes_overlap_any(trial_box, occupied_label_boxes):
-                        continue
-                    selected_side = candidate
-                    selected_align_x = candidate_align_x
-                    selected_y = trial_y
-                    placed = True
-                    break
-                if placed:
-                    break
-
-            if not placed:
-                nudge_candidates = [auto_side, opposite_side, side]
-                for candidate in nudge_candidates:
-                    if candidate not in {"left", "right"}:
-                        continue
-                    candidate_align_x = left_align_x if candidate == "left" else None
-                    nudged_align_x = _nudge_horizontal_flag_tip(
-                        pt[0], pt[1], net_name,
-                        side=candidate, align_x=candidate_align_x,
-                        obstacles=flag_obstacles, ln_font_size=ln_font_size,
-                    )
-                    if nudged_align_x is None:
-                        continue
-                    for y_offset in row_offsets:
-                        trial_y = pt[1] + y_offset
-                        if _flag_label_hits_obstacles(
-                            pt[0], trial_y, net_name,
-                            side=candidate, align_x=nudged_align_x,
-                            obstacles=flag_obstacles, ln_font_size=ln_font_size,
-                        ):
-                            continue
-                        trial_box = _flag_label_box(
-                            pt[0], trial_y, net_name,
-                            side=candidate,
-                            ln_font_size=ln_font_size,
-                            halo_pad=halo_pad,
-                            align_x=nudged_align_x,
-                        )
-                        if _boxes_overlap_any(trial_box, occupied_label_boxes):
-                            continue
-                        selected_side = candidate
-                        selected_align_x = nudged_align_x
-                        selected_y = trial_y
-                        placed = True
-                        break
-                    if placed:
-                        break
-
-            _draw_flag_label(
-                canvas, pt[0], selected_y, net_name, side=selected_side, align_x=selected_align_x,
-                wire_color=wire_color,
-                ln_color=ln_color,
-                ln_font_size=ln_font_size,
-                ln_font_style=ln_font_style,
-                ln_body_fill=ln_body_fill,
-                ln_body_stroke_width=ln_body_stroke_width,
-                ln_stem_stroke_width=ln_stem_stroke_width,
-                halo_fill=halo_fill,
-                halo_opacity=halo_opacity,
-                halo_pad=halo_pad,
-            )
-            occupied_label_boxes.append(
-                _flag_label_box(
-                    pt[0],
-                    selected_y,
-                    net_name,
-                    side=selected_side,
-                    ln_font_size=ln_font_size,
-                    halo_pad=halo_pad,
-                    align_x=selected_align_x,
-                )
-            )
 
     if debug:
         _draw_debug_overlays(
@@ -994,6 +881,20 @@ def _draw_debug_overlays(
 # ---------------------------------------------------------------------------
 # Layout helpers
 # ---------------------------------------------------------------------------
+
+def _netlabel_rotation(direction: str | None, *, fallback: int = 0) -> int:
+    """Return clockwise rotation mapped from NetLabel direction."""
+    mapping = {
+        "right": 0,
+        "left": 180,
+        "top": 90,
+        "bottom": 270,
+        "up": 90,
+        "down": 270,
+    }
+    key = (direction or "").strip().lower()
+    return mapping.get(key, fallback)
+
 
 def _part_position(
     part: "Part",
@@ -1120,15 +1021,11 @@ def _compute_pin_endpoints(
 ) -> dict[tuple[str, str], tuple[float, float]]:
     """Return {(part_ref, pin_key): (px, py)} for all pins of *part*."""
     from lib.core.junction import Junction
-    from lib.core.part import NetLabel
 
-    if isinstance(part, (NetLabel, Junction)):
+    if isinstance(part, Junction):
         if not part.pins:
             return {}
-        if isinstance(part, NetLabel):
-            marker_pin = part.label_pin
-        else:
-            marker_pin = part.junction_pin
+        marker_pin = part.junction_pin
         return {(marker_pin.part_ref, marker_pin.key): (cx, cy)}
 
     renderer = symbol_renderer or SymbolRenderer()
@@ -1144,7 +1041,13 @@ def _compute_pin_endpoints(
     if renderer.can_render(part, symbol_name):
         return endpoints
 
-    return _generic_box_pin_endpoints(part, cx, cy, box_style=box_style, pin_style=pin_style)
+    return _generic_box_pin_endpoints(
+        part,
+        cx,
+        cy,
+        box_style=box_style,
+        pin_style=pin_style,
+    )
 
 
 def _generic_box_pin_endpoints(
@@ -2334,346 +2237,6 @@ def _draw_net_label(
     canvas.text(x, y, net_name,
                 font_size=font_net, fill=wire_color,
                 anchor="middle", dominant_baseline="middle")
-
-
-def _flag_label_geometry(
-    x: float,
-    y: float,
-    net_name: str,
-    *,
-    side: str,
-    ln_font_size: float,
-    align_x: float | None = None,
-) -> tuple[float, float, float, float, float, float, float, float]:
-    """Return flag-label geometry tuple.
-
-    Result: (tip_x, tip_y, box_x, box_y, box_w, box_h, text_x, text_y)
-    """
-    char_w = ln_font_size * 0.62
-    text_w = max(34.0, len(net_name) * char_w)
-    box_h = max(18.0, ln_font_size + 6.0)
-    tri_w = 6.0
-    box_w = text_w + 12.0
-
-    tip_x, tip_y = x, y
-
-    if side == "left":
-        tip_x = align_x if align_x is not None else x
-        box_x = tip_x + tri_w
-        box_y = tip_y - box_h / 2
-        text_x = box_x + box_w / 2
-        text_y = tip_y
-    elif side == "right":
-        tip_x = align_x if align_x is not None else x
-        box_x = tip_x - tri_w - box_w
-        box_y = tip_y - box_h / 2
-        text_x = box_x + box_w / 2
-        text_y = tip_y
-    elif side == "top":
-        box_x = tip_x - box_w / 2
-        box_y = tip_y - tri_w - box_h
-        text_x = tip_x
-        text_y = box_y + box_h / 2
-    else:  # bottom
-        box_x = tip_x - box_w / 2
-        box_y = tip_y + tri_w
-        text_x = tip_x
-        text_y = box_y + box_h / 2
-
-    return tip_x, tip_y, box_x, box_y, box_w, box_h, text_x, text_y
-
-
-def _flag_label_box(
-    x: float,
-    y: float,
-    net_name: str,
-    *,
-    side: str,
-    ln_font_size: float,
-    halo_pad: float,
-    align_x: float | None = None,
-) -> tuple[float, float, float, float]:
-    """Return conservative (x0, y0, x1, y1) bounds for a flag label."""
-    _, _, box_x, box_y, box_w, box_h, _, _ = _flag_label_geometry(
-        x, y, net_name, side=side, ln_font_size=ln_font_size, align_x=align_x
-    )
-    # Include halo padding used by _draw_flag_label so overlap checks match render.
-    halo_pad_x, halo_pad_y = _flag_label_halo_padding(halo_pad)
-    return (
-        box_x - halo_pad_x,
-        box_y - halo_pad_y,
-        box_x + box_w + halo_pad_x,
-        box_y + box_h + halo_pad_y,
-    )
-
-
-def _flag_label_halo_padding(halo_pad: float) -> tuple[float, float]:
-    """Return (pad_x, pad_y) used by flag-label halo geometry."""
-    # Keep legacy default visual when halo.pad=2.0 -> (8, 6),
-    # while still allowing template-level halo pad scaling.
-    return (max(2.0, halo_pad + 6.0), max(2.0, halo_pad + 4.0))
-
-
-def _boxes_overlap_any(
-    box: tuple[float, float, float, float],
-    others: list[tuple[float, float, float, float]],
-) -> bool:
-    """Return True if *box* overlaps any box in *others*."""
-    x0, y0, x1, y1 = box
-    for ox0, oy0, ox1, oy1 in others:
-        if _rects_overlap(x0, y0, x1, y1, ox0, oy0, ox1, oy1):
-            return True
-    return False
-
-
-def _rects_overlap(
-    ax0: float, ay0: float, ax1: float, ay1: float,
-    bx0: float, by0: float, bx1: float, by1: float,
-) -> bool:
-    """Return True when two AABBs overlap with non-zero area."""
-    return not (ax1 <= bx0 or bx1 <= ax0 or ay1 <= by0 or by1 <= ay0)
-
-
-def _flag_label_hits_obstacles(
-    x: float,
-    y: float,
-    net_name: str,
-    *,
-    side: str,
-    align_x: float | None,
-    obstacles: list[_Obstacle],
-    ln_font_size: float,
-) -> bool:
-    """Return True if the flag body intersects any component obstacle box."""
-    _, _, box_x, box_y, box_w, box_h, _, _ = _flag_label_geometry(
-        x, y, net_name, side=side, ln_font_size=ln_font_size, align_x=align_x
-    )
-    bx0 = box_x
-    by0 = box_y
-    bx1 = box_x + box_w
-    by1 = box_y + box_h
-
-    for obs in obstacles:
-        if _rects_overlap(bx0, by0, bx1, by1, obs.x0, obs.y0, obs.x1, obs.y1):
-            return True
-    return False
-
-
-def _nudge_horizontal_flag_tip(
-    x: float,
-    y: float,
-    net_name: str,
-    *,
-    side: str,
-    align_x: float | None,
-    obstacles: list[_Obstacle],
-    ln_font_size: float,
-) -> float | None:
-    """Return a nudged tip-x for horizontal flags so label body clears obstacles."""
-    if side not in {"left", "right"}:
-        return None
-
-    tip_x, _, box_x, box_y, box_w, box_h, _, _ = _flag_label_geometry(
-        x, y, net_name, side=side, ln_font_size=ln_font_size, align_x=align_x
-    )
-
-    overlaps: list[_Obstacle] = []
-    by0 = box_y
-    by1 = box_y + box_h
-    bx0 = box_x
-    bx1 = box_x + box_w
-    for obs in obstacles:
-        if _rects_overlap(bx0, by0, bx1, by1, obs.x0, obs.y0, obs.x1, obs.y1):
-            overlaps.append(obs)
-
-    if not overlaps:
-        return align_x
-
-    tri_w = 6.0
-    gap = 2.0
-    if side == "left":
-        rightmost_x = max(obs.x1 for obs in overlaps)
-        nudged_tip_x = max(tip_x, rightmost_x + gap - tri_w)
-    else:
-        leftmost_x = min(obs.x0 for obs in overlaps)
-        nudged_tip_x = min(tip_x, leftmost_x - gap + tri_w)
-    return nudged_tip_x
-
-
-def _draw_flag_label(
-    canvas: "_TrackingCanvas",
-    x: float,
-    y: float,
-    net_name: str,
-    *,
-    side: str = "left",
-    align_x: float | None = None,
-    wire_color: str | None = None,
-    ln_color: str | None = None,
-    ln_font_size: float | None = None,
-    ln_font_style: str | None = None,
-    ln_body_fill: str | None = None,
-    ln_body_stroke_width: float | None = None,
-    ln_stem_stroke_width: float | None = None,
-    halo_fill: str | None = None,
-    halo_opacity: str | None = None,
-    halo_pad: float | None = None,
-) -> None:
-    """Draw a label-net as a small *symbol-like component*.
-
-    The stem is always **horizontal**, parallel to the pin stub, so it
-    visually continues the stub line without any diagonal artefact.
-
-    Geometry:
-    - side='left'  (right-protruding stub): triangle tip at (align_x or x, y),
-      body extends further right.  A horizontal stem runs from (x, y) to the
-      tip when align_x != x.
-    - side='right' (left-protruding stub): triangle tip at (x, y), body
-      extends to the left.  No stem needed — tip is already at pin endpoint.
-
-    For side='left', *align_x* sets a shared column for the triangle tip so
-    that all left-side labels in the same schematic align their bodies to the
-    same vertical line (a purely horizontal stem connects each pin to it).
-    """
-    default_wire = _default_wire_style()
-    default_ln = _default_net_label_style()
-    default_halo = _default_halo_style()
-
-    wire_color = (
-        _style_value(default_wire.color, field_name="wire.color")
-        if wire_color is None
-        else wire_color
-    )
-    ln_color = (
-        _style_value(default_ln.color, field_name="label_net.color")
-        if ln_color is None
-        else ln_color
-    )
-    ln_font_size = (
-        _style_value(default_ln.font_size, field_name="label_net.font_size")
-        if ln_font_size is None
-        else ln_font_size
-    )
-    ln_font_style = (
-        _style_value(default_ln.font_style, field_name="label_net.font_style")
-        if ln_font_style is None
-        else ln_font_style
-    )
-    ln_body_fill = (
-        _style_value(default_ln.body_fill, field_name="label_net.body_fill")
-        if ln_body_fill is None
-        else ln_body_fill
-    )
-    ln_body_stroke_width = (
-        ln_body_stroke_width
-        if ln_body_stroke_width is not None
-        else _style_value(default_ln.body_stroke_width, field_name="label_net.body_stroke_width")
-    )
-    ln_stem_stroke_width = (
-        ln_stem_stroke_width
-        if ln_stem_stroke_width is not None
-        else _style_value(default_ln.stem_stroke_width, field_name="label_net.stem_stroke_width")
-    )
-    halo_fill = (
-        _style_value(default_halo.fill, field_name="halo.fill")
-        if halo_fill is None
-        else halo_fill
-    )
-    halo_opacity = (
-        _style_value(default_halo.opacity, field_name="halo.opacity")
-        if halo_opacity is None
-        else halo_opacity
-    )
-    halo_pad = (
-        _style_value(default_halo.pad, field_name="halo.pad")
-        if halo_pad is None
-        else halo_pad
-    )
-
-    pad_x, pad_y = _flag_label_halo_padding(halo_pad)
-    tip_x, tip_y, box_x, box_y, box_w, box_h, text_x, text_y = _flag_label_geometry(
-        x, y, net_name, side=side, ln_font_size=ln_font_size, align_x=align_x
-    )
-
-    # Halo (covers body + any horizontal stem)
-    halo_x = box_x - pad_x
-    halo_y = box_y - pad_y
-    halo_w = box_w + pad_x * 2
-    halo_h = box_h + pad_y * 2
-    canvas._elements.append(
-        f'<rect x="{halo_x:.1f}" y="{halo_y:.1f}" width="{halo_w:.1f}" height="{halo_h:.1f}" '
-        f'fill="{halo_fill}" opacity="{halo_opacity}"/>'
-    )
-
-    # Horizontal stem from pin endpoint to triangle tip.
-    if tip_y == y and tip_x != x:
-        canvas.line(x, y, tip_x, tip_y, stroke=ln_color, stroke_width=ln_stem_stroke_width)
-
-    # Label body (iconoir-like tag outline): hollow shape, unified stroke.
-    # Keep text inside for readability.
-    if side in {"left", "right"}:
-        # Horizontal tag
-        if side == "left":
-            x0 = box_x
-            x1 = box_x + box_w
-            y0 = box_y
-            y1 = box_y + box_h
-            notch = min(10.0, box_w * 0.22)
-            d = (
-                f"M {x1:.1f} {y0:.1f} "
-                f"L {x0 + notch:.1f} {y0:.1f} "
-                f"L {tip_x:.1f} {tip_y:.1f} "
-                f"L {x0 + notch:.1f} {y1:.1f} "
-                f"L {x1:.1f} {y1:.1f} Z"
-            )
-        else:
-            x0 = box_x
-            x1 = box_x + box_w
-            y0 = box_y
-            y1 = box_y + box_h
-            notch = min(10.0, box_w * 0.22)
-            d = (
-                f"M {x0:.1f} {y0:.1f} "
-                f"L {x1 - notch:.1f} {y0:.1f} "
-                f"L {tip_x:.1f} {tip_y:.1f} "
-                f"L {x1 - notch:.1f} {y1:.1f} "
-                f"L {x0:.1f} {y1:.1f} Z"
-            )
-    else:
-        # Vertical tag
-        x0 = box_x
-        x1 = box_x + box_w
-        y0 = box_y
-        y1 = box_y + box_h
-        notch = min(10.0, box_h * 0.28)
-        if side == "top":
-            d = (
-                f"M {x0:.1f} {y0:.1f} "
-                f"L {x1:.1f} {y0:.1f} "
-                f"L {x1:.1f} {y1 - notch:.1f} "
-                f"L {tip_x:.1f} {tip_y:.1f} "
-                f"L {x0:.1f} {y1 - notch:.1f} Z"
-            )
-        else:
-            d = (
-                f"M {x0:.1f} {y1:.1f} "
-                f"L {x1:.1f} {y1:.1f} "
-                f"L {x1:.1f} {y0 + notch:.1f} "
-                f"L {tip_x:.1f} {tip_y:.1f} "
-                f"L {x0:.1f} {y0 + notch:.1f} Z"
-            )
-
-    canvas._elements.append(
-        f'<path d="{d}" fill="{ln_body_fill}" stroke="{ln_color}" stroke-width="{ln_body_stroke_width}"/>'
-    )
-
-    canvas._elements.append(
-        f'<text x="{text_x:.1f}" y="{text_y:.1f}" font-size="{ln_font_size}" fill="{ln_color}" '
-        f'text-anchor="middle" dominant-baseline="middle" font-style="{ln_font_style}">{net_name}</text>'
-    )
-
-    canvas._track(halo_x, halo_y)
-    canvas._track(halo_x + halo_w, halo_y + halo_h)
 
 def _render_missing_symbol_placeholder(
     canvas: "_TrackingCanvas",

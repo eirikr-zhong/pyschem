@@ -45,16 +45,20 @@ All old `RenderStyle` fields are now fields on unified `Style` with the same nam
 | `symbol` | `symbol` |
 | `ref_text` | `ref_text` |
 | `value_text` | `value_text` |
-| `canvas_scale_mode` | `canvas_scale_mode` |
-| `canvas_scale` | `canvas_scale` |
-| `canvas_scale_min` | `canvas_scale_min` |
-| `canvas_scale_max` | `canvas_scale_max` |
-| `canvas_target_min_font_px` | `canvas_target_min_font_px` |
 | `background` | `background` |
 | `ref_font_size` | `ref_font_size` |
 | `value_font_size` | `value_font_size` |
 | `net_font_size` | `net_font_size` |
 | `pin_font_size` | `pin_font_size` |
+
+Removed fields:
+
+- `symbol.scale` (symbol geometry is now amplified 6x during symbol parsing)
+- `canvas_scale_mode`
+- `canvas_scale`
+- `canvas_scale_min`
+- `canvas_scale_max`
+- `canvas_target_min_font_px`
 
 ### Pin visibility controls
 

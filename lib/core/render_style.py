@@ -235,19 +235,12 @@ class PinStyle:
 
 @dataclass
 class SymbolStyle:
-    """Visual scaling controls for resolved library symbols.
-
-    Attributes:
-        scale: Global geometric scale factor for symbol primitives/pins.
-               ``1.0`` keeps KiCad-native size; values > 1 enlarge symbols.
-    """
-
-    scale: Optional[float] = None
+    """Reserved namespace for future symbol rendering controls."""
 
     @classmethod
     def default(cls) -> "SymbolStyle":
         """Return a fully-specified default symbol style."""
-        return cls(scale=1.0)
+        return cls()
 
     def merge(self, override: "SymbolStyle") -> "SymbolStyle":
         """Return a new :class:`SymbolStyle` with *override* fields applied."""
@@ -378,21 +371,9 @@ class RenderStyle:
         halo:            Net-label halo rectangle style.
         box:             Generic component box outline style.
         pin:             Pin stub and annotation style.
-        symbol:          Library symbol rendering controls (e.g. scale).
+        symbol:          Library symbol rendering controls.
         ref_text:        Placement controls for reference text labels.
         value_text:      Placement controls for value text labels.
-        canvas_scale_mode:
-                         Output canvas scaling mode.
-                         ``"fixed"`` uses ``canvas_scale`` directly.
-                         ``"auto"`` derives scale from font readability target.
-        canvas_scale:    Overall output scaling factor used in ``"fixed"``
-                         mode at SVG export time (width/height pixel density).
-        canvas_scale_min:
-                         Minimum allowed output scale (applies to both modes).
-        canvas_scale_max:
-                         Maximum allowed output scale (applies to both modes).
-        canvas_target_min_font_px:
-                         Readability target in pixels for ``"auto"`` mode.
         background:      SVG canvas background colour.
         ref_font_size:   Font size for component reference designators.
         value_font_size: Font size for component value text.
@@ -408,11 +389,6 @@ class RenderStyle:
     symbol: Optional[SymbolStyle] = None
     ref_text: Optional[TextPlacementStyle] = None
     value_text: Optional[TextPlacementStyle] = None
-    canvas_scale_mode: Optional[str] = None
-    canvas_scale: Optional[float] = None
-    canvas_scale_min: Optional[float] = None
-    canvas_scale_max: Optional[float] = None
-    canvas_target_min_font_px: Optional[float] = None
     background: Optional[str] = None
     ref_font_size: Optional[float] = None
     value_font_size: Optional[float] = None
@@ -431,11 +407,6 @@ class RenderStyle:
             symbol=SymbolStyle.default(),
             ref_text=TextPlacementStyle.default_ref(),
             value_text=TextPlacementStyle.default_value(),
-            canvas_scale_mode="auto",
-            canvas_scale=1.0,
-            canvas_scale_min=1.0,
-            canvas_scale_max=6.0,
-            canvas_target_min_font_px=12.0,
             background="#ffffff",
             ref_font_size=14.0,
             value_font_size=11.0,
@@ -478,12 +449,6 @@ class RenderStyle:
             )
             for name in scalar_names
         }
-        if getattr(override, "canvas_scale", None) is not None and getattr(
-            override, "canvas_scale_mode", None
-        ) is None:
-            # Backward compatibility: historical usage set only canvas_scale and
-            # expected fixed-width/height output scaling.
-            scalars["canvas_scale_mode"] = "fixed"
 
         return type(self)(**merged_subs, **scalars)
 

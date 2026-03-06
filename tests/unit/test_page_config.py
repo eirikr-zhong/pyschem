@@ -31,7 +31,6 @@ import re
 import pytest
 
 from lib.core.page import PageConfig
-from lib.core.render_style import RenderStyle
 from lib.core.schematic import Schematic
 from lib.core.part import Part
 
@@ -148,81 +147,62 @@ def _svg_dims(svg: str) -> tuple[float, float]:
     return float(m.group(1)), float(m.group(2))
 
 
-def _default_auto_scale() -> float:
-    style = RenderStyle.default()
-    baseline = min(
-        style.ref_font_size,
-        style.net_font_size,
-        style.value_font_size,
-        style.pin_font_size,
-        style.label_net.font_size,
-    )
-    raw = style.canvas_target_min_font_px / baseline
-    return max(style.canvas_scale_min, min(style.canvas_scale_max, raw))
-
-
 class TestPageConfigSvgIntegration:
     """PAGE-12 to PAGE-18: PageConfig used by SVG render chain."""
 
     def test_default_svg_uses_a1_dimensions(self):
-        """PAGE-12: SVG defaults to A1 with adaptive output-scale applied."""
+        """PAGE-12: SVG defaults to A1 dimensions."""
         sch = _simple_schematic()
         svg = sch.get_svg_string()
         width, height = _svg_dims(svg)
-        scale = _default_auto_scale()
-        assert width == pytest.approx(_A1[0] * scale)
-        assert height == pytest.approx(_A1[1] * scale)
+        assert width == pytest.approx(_A1[0])
+        assert height == pytest.approx(_A1[1])
 
     def test_default_svg_viewbox_matches_a1(self):
-        """PAGE-13: viewBox present; output width/height include adaptive scaling."""
+        """PAGE-13: viewBox present; output width/height match page."""
         sch = _simple_schematic()
         svg = sch.get_svg_string()
         width, height = _svg_dims(svg)
-        scale = _default_auto_scale()
-        assert width == pytest.approx(_A1[0] * scale)
-        assert height == pytest.approx(_A1[1] * scale)
+        assert width == pytest.approx(_A1[0])
+        assert height == pytest.approx(_A1[1])
         # viewBox is fit-to-content so it won't equal "0 0 1684.0 2384.0"
         assert 'viewBox="' in svg
 
     def test_export_svg_with_a3_page(self, tmp_path):
-        """PAGE-14: export_svg with PageConfig.a3() scales width/height adaptively."""
+        """PAGE-14: export_svg with PageConfig.a3() keeps page width/height."""
         sch = _simple_schematic()
         out = tmp_path / "a3.svg"
         sch.export_svg(str(out), page=PageConfig.a3())
         content = out.read_text()
         width, height = _svg_dims(content)
-        scale = _default_auto_scale()
-        assert width == pytest.approx(_A3[0] * scale)
-        assert height == pytest.approx(_A3[1] * scale)
+        assert width == pytest.approx(_A3[0])
+        assert height == pytest.approx(_A3[1])
 
     def test_get_svg_string_with_a4_page(self):
-        """PAGE-15: get_svg_string(page=a4()) scales width/height adaptively."""
+        """PAGE-15: get_svg_string(page=a4()) keeps page width/height."""
         sch = _simple_schematic()
         svg = sch.get_svg_string(page=PageConfig.a4())
         width, height = _svg_dims(svg)
-        scale = _default_auto_scale()
-        assert width == pytest.approx(_A4[0] * scale)
-        assert height == pytest.approx(_A4[1] * scale)
+        assert width == pytest.approx(_A4[0])
+        assert height == pytest.approx(_A4[1])
 
     def test_render_svg_with_page(self, tmp_path):
-        """PAGE-16: render(fmt='svg', page=...) applies adaptive width/height scaling."""
+        """PAGE-16: render(fmt='svg', page=...) keeps page width/height."""
         sch = _simple_schematic()
         out = tmp_path / "render.svg"
         sch.render(str(out), fmt="svg", page=PageConfig.a2())
         content = out.read_text()
         width, height = _svg_dims(content)
-        scale = _default_auto_scale()
-        assert width == pytest.approx(_A2[0] * scale)
-        assert height == pytest.approx(_A2[1] * scale)
+        assert width == pytest.approx(_A2[0])
+        assert height == pytest.approx(_A2[1])
 
     def test_legacy_width_height_still_work(self):
-        """PAGE-17: legacy width/height kwargs remain functional with auto scaling."""
+        """PAGE-17: legacy width/height kwargs remain functional."""
         sch = _simple_schematic()
         svg = sch.get_svg_string(width=800, height=600)
         width, height = _svg_dims(svg)
-        scale = _default_auto_scale()
-        assert width == pytest.approx(800 * scale)
-        assert height == pytest.approx(600 * scale)
+        assert width == pytest.approx(800)
+        assert height == pytest.approx(600)
 
     def test_pageconfig_importable_from_top_level(self):
         """PAGE-18: PageConfig is importable from the pyschem top-level."""
@@ -231,24 +211,22 @@ class TestPageConfigSvgIntegration:
         assert pyschem.PageConfig.a1().width == _A1[0]
 
     def test_custom_page_dimensions_in_svg(self):
-        """Custom PageConfig dimensions appear in SVG output with adaptive scaling."""
+        """Custom PageConfig dimensions appear in SVG output."""
         sch = _simple_schematic()
         cfg = PageConfig(width=1200.0, height=900.0)
         svg = sch.get_svg_string(page=cfg)
         width, height = _svg_dims(svg)
-        scale = _default_auto_scale()
-        assert width == pytest.approx(cfg.width * scale)
-        assert height == pytest.approx(cfg.height * scale)
+        assert width == pytest.approx(cfg.width)
+        assert height == pytest.approx(cfg.height)
         # viewBox is fit-to-content — verify it is present but not necessarily full-page
         assert 'viewBox="' in svg
 
     def test_a0_landscape_svg_dimensions(self):
-        """A0 landscape page produces correctly scaled wide canvas in SVG."""
+        """A0 landscape page produces correct wide canvas dimensions in SVG."""
         sch = _simple_schematic()
         cfg = PageConfig.a0(landscape=True)
         svg = sch.get_svg_string(page=cfg)
         width, height = _svg_dims(svg)
-        scale = _default_auto_scale()
-        # Landscape A0 base: 3370 wide × 2384 tall, then adaptive output scaling
-        assert width == pytest.approx(3370.0 * scale)
-        assert height == pytest.approx(2384.0 * scale)
+        # Landscape A0 base: 3370 wide × 2384 tall
+        assert width == pytest.approx(3370.0)
+        assert height == pytest.approx(2384.0)

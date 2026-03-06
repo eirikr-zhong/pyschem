@@ -31,7 +31,7 @@ class SymbolPrimitive:
     """Represents a KiCad-like graphical primitive of a symbol body.
 
     The coordinate system is symbol-local (0, 0 at symbol centre by convention).
-    Renderer backends may scale/transform these points to target space.
+    Coordinates are pre-amplified at parse time to match renderer space.
 
     Attributes:
         kind: Primitive type, e.g. ``line``, ``polyline``, ``polygon``,

@@ -7,6 +7,7 @@ WIRE-02  Wire endpoints are plausibly spaced (not zero-length)
 WIRE-03  Three-pin net produces multi-segment wiring (vertical trunk)
 WIRE-04  Anonymous-net wire is still drawn (no label, but line exists)
 WIRE-05  Junction dot rendered when 3+ pins share a trunk point
+WIRE-08  Single-pin named net still draws wire to NetLabel
 
 FIT-01   viewBox attribute present and differs from "0 0 <w> <h>" when content drawn
 FIT-02   viewBox encodes a content-centred region (vb_x < 0 for typical layout)
@@ -42,7 +43,7 @@ import pytest
 
 from lib.core.connect import connect
 from lib.core.part import NetLabel, Part
-from lib.core.render_style import BoxStyle, RenderStyle
+from lib.core.render_style import BoxStyle, RenderStyle, RenderTemplate, WireStyle
 from lib.core.style import Style
 from lib.render.schematic_svg import (
     _Obstacle,
@@ -233,6 +234,28 @@ class TestWireRendering:
         svg = sch.get_svg_string()
         # _anon prefix should not appear as visible text
         assert "_anon" not in svg, "Anonymous net name should not appear as label text"
+
+    def test_single_pin_named_net_draws_wire_to_netlabel(self):
+        """WIRE-08: one real pin + one NetLabel still renders a wire segment."""
+        sch = Schematic("single_pin_named_net")
+        r1 = Part("Device:R", ref="R1")
+        label = NetLabel("A")
+        sch.add_part(r1)
+        sch.add_part(label)
+        sch.place(r1, x=20, y=25)
+        sch.place(label, x=5, y=25)
+        sch.connect(label.label_pin, r1.pin("2"))
+
+        template = RenderTemplate.from_style(
+            RenderStyle.default().merge(
+                RenderStyle(wire=WireStyle(color="#00aaff", width=2.2))
+            ),
+            page=PageConfig.a4(),
+        )
+        svg = sch.get_svg_string(template=template)
+
+        wire_lines = re.findall(r'<line[^>]*stroke="#00aaff"', svg)
+        assert wire_lines, "Expected at least one routed wire line to the NetLabel"
 
 
 # ===========================================================================
