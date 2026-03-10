@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main, dev]
+    branches: [main]
 
 jobs:
   test:
@@ -37,4 +37,5 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./coverage.xml
           flags: unittests
+          branch: main
           fail_ci_if_error: true

@@ -1,7 +1,7 @@
 # PySchem
 
 ![CI](https://github.com/eirikr-zhong/pyschem/actions/workflows/ci.yml/badge.svg)
-[![codecov](https://codecov.io/gh/eirikr-zhong/pyschem/branch/dev/graph/badge.svg)](https://codecov.io/gh/eirikr-zhong/pyschem)
+[![codecov](https://codecov.io/gh/eirikr-zhong/pyschem/branch/main/graph/badge.svg)](https://codecov.io/gh/eirikr-zhong/pyschem)
 ![Python Versions](https://img.shields.io/pypi/pyversions/pyschem.svg)
 ![License](https://img.shields.io/pypi/l/pyschem.svg)
 ![GitHub Last Commit](https://img.shields.io/github/last-commit/eirikr-zhong/pyschem.svg)
