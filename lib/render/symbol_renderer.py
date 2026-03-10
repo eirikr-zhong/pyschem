@@ -180,12 +180,30 @@ class SymbolRenderer:
 
         ref = part.ref or "?"
         result: dict[tuple[str, str], tuple[float, float]] = {}
+        # Build reverse mapping: name → number and number → name
+        name_to_number: dict[str, str] = {}
+        number_to_name: dict[str, str] = {}
+        for pin in symbol.pins:
+            if pin.name and pin.name != "~":
+                name_to_number[pin.name] = pin.number
+                number_to_name[pin.number] = pin.name
+
         for pin_key in part.pins:
             if pin_key not in endpoint_by_alias:
                 continue
             lx, ly = endpoint_by_alias[pin_key]
             wx, wy = self._to_world_point(lx, ly, cx, cy, rotation)
             result[(ref, pin_key)] = (wx, wy)
+            # Also emit the complementary key (number↔name) so callers
+            # can look up by either identifier.
+            if pin_key in name_to_number:
+                alt = name_to_number[pin_key]
+                if (ref, alt) not in result:
+                    result[(ref, alt)] = (wx, wy)
+            elif pin_key in number_to_name:
+                alt = number_to_name[pin_key]
+                if (ref, alt) not in result:
+                    result[(ref, alt)] = (wx, wy)
         return result
 
     def component_bbox(

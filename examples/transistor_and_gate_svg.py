@@ -17,15 +17,14 @@ Output: out/transistor_and_gate.svg
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 from pyschem import (
     BoxStyle,
+    GroundNet,
     Junction,
     NetLabel,
     NetLabelStyle,
-    PageConfig,
     Part,
     PinStyle,
     RenderTemplate,
@@ -59,16 +58,16 @@ r4 = Part("Device:R", ref="R4", value="10K")
 r5 = Part("Device:R", ref="R5", value="10K")
 
 # Named NetLabels for external signals.
-nl_a = NetLabel("A", direction="right")
-nl_b = NetLabel("B", direction="right")
+nl_a = NetLabel("A", direction="left")
+nl_b = NetLabel("B", direction="left")
 nl_a_and_b = NetLabel("A_AND_B", direction="right")
 
 # Duplicate VCC/GND label flags are intentional: they share same net name,
 # but provide separate visual attachment points.
 nl_vcc_q1 = NetLabel("VCC", direction="top")
 nl_vcc_q2 = NetLabel("VCC", direction="top")
-nl_gnd_left = NetLabel("GND", direction="bottom")
-nl_gnd_right = NetLabel("GND", direction="bottom")
+nl_gnd_left = GroundNet()
+nl_gnd_right = GroundNet()
 
 # ---------------------------------------------------------------------------
 # Explicit layout positions (x, y in schematic units → scaled × 3 in SVG)
@@ -81,89 +80,75 @@ nl_gnd_right = NetLabel("GND", direction="bottom")
 #   Col 5 (x=160): R5 (output pull-down)
 # ---------------------------------------------------------------------------
 
-sch.place(r1, x=20, y=25)
-sch.place(r2, x=20, y=75)
+sch.place(r1, x=20, y=24.95)
+sch.place(r2, x=20, y=75.05)
 sch.place(q1, x=65, y=50)
-sch.place(j_q1_bias, x=45, y=50)
-sch.place(r3, x=110, y=35)
-sch.place(r4, x=110, y=70)
-sch.place(q2, x=155, y=50)
-sch.place(r5, x=155, y=100)
+sch.place(j_q1_bias, x=20, y=50)
+sch.place(r3, x=70.07, y=82.67)
+sch.place(r4, x=107.46, y=60.16, rotation=90)
+sch.place(q2, x=155, y=60.16)
+sch.place(r5, x=160.08, y=100)
 
 # Label flags
-sch.place(nl_a, x=5, y=25)
-sch.place(nl_b, x=5, y=75)
-sch.place(nl_vcc_q1, x=65, y=20)
-sch.place(nl_vcc_q2, x=155, y=20)
-sch.place(nl_a_and_b, x=185, y=50)
-sch.place(nl_gnd_left, x=90, y=110)
-sch.place(nl_gnd_right, x=175, y=115)
+sch.place(nl_a, x=5, y=17.33)
+sch.place(nl_b, x=5, y=82.67)
+sch.place(nl_vcc_q1, x=70.08, y=20)
+sch.place(nl_vcc_q2, x=160.08, y=20)
+sch.place(nl_a_and_b, x=185, y=80.32, style=Style(value_text=TextPlacementStyle(position="bottom", offset=8.0)))
+sch.place(nl_gnd_left, x=70.07, y=110)
+sch.place(nl_gnd_right, x=160.08, y=115)
 
 # ---------------------------------------------------------------------------
 # Wiring
+#
+# PySchem supports two equivalent connection styles:
+#   - pin.connect(other)         — concise two-pin form
+#   - connect(pin_a, pin_b, ...) — multi-pin form, useful for tee junctions
 # ---------------------------------------------------------------------------
 # A -> R1(2)
-connect(nl_a.label_pin, r1.pin("2"))
+nl_a.label_pin.connect(r1.pin("2"))
 
 # B -> R2(1)
-connect(nl_b.label_pin, r2.pin("1"))
+nl_b.label_pin.connect(r2.pin("1"))
 
 # Merge branch near Q1.B through an explicit tee junction.
 connect(r1.pin("1"), r2.pin("2"), j_q1_bias.junction_pin)
-connect(j_q1_bias.junction_pin, q1.pin("B"))
+j_q1_bias.junction_pin.connect(q1.pin("B"))
 
 # VCC label flags -> transistor emitters
-connect(nl_vcc_q1.label_pin, q1.pin("E"))
-connect(nl_vcc_q2.label_pin, q2.pin("E"))
+nl_vcc_q1.label_pin.connect(q1.pin("E"))
+nl_vcc_q2.label_pin.connect(q2.pin("E"))
 
 # Q1(C) -> R3(2), and R3(1) -> GND
-connect(q1.pin("C"), r3.pin("2"))
-connect(r3.pin("1"), nl_gnd_left.label_pin)
+q1.pin("C").connect(r3.pin("2"))
+r3.pin("1").connect(nl_gnd_left.label_pin)
 
 # Q1(C) -> R4(2), and R4(1) -> Q2(B)
-connect(q1.pin("C"), r4.pin("2"))
-connect(r4.pin("1"), q2.pin("B"))
+q1.pin("C").connect(r4.pin("2"))
+r4.pin("1").connect(q2.pin("B"))
 
 # Q2(C) -> output label and pull-down branch
-connect(q2.pin("C"), nl_a_and_b.label_pin)
-connect(q2.pin("C"), r5.pin("2"))
-connect(r5.pin("1"), nl_gnd_right.label_pin)
+q2.pin("C").connect(nl_a_and_b.label_pin)
+q2.pin("C").connect(r5.pin("2"))
+r5.pin("1").connect(nl_gnd_right.label_pin)
 
 # ---------------------------------------------------------------------------
 # Export
 # ---------------------------------------------------------------------------
 
-svg_path = "out/transistor_and_gate.svg"
+svg_path = Path(__file__).resolve().parent / "out" / "transistor_and_gate.svg"
+svg_path.parent.mkdir(parents=True, exist_ok=True)
 wire_color = "#1565c0"
-page = PageConfig.a1(landscape=True)
 render_template = RenderTemplate.from_style(
     Style(
         wire=WireStyle(color=wire_color),
         label_net=NetLabelStyle(color=wire_color),
         box=BoxStyle(stroke="#d32f2f"),
-        pin=PinStyle(stub_stroke="#d32f2f", key_fill="#000000", value_fill="#000000", font_value=8.0),
-        symbol=SymbolStyle(scale=6.0),
+        pin=PinStyle(stub_stroke="#d32f2f", key_fill="#000000", value_fill="#000000", font_value=8.0, pin_name_visible=False, pin_value_visible=False),
         value_text=TextPlacementStyle(position="center"),
         value_font_size=8.0,
-        canvas_scale_mode="auto",
-        canvas_scale_min=1.0,
-        canvas_scale_max=6.0,
-        canvas_target_min_font_px=12.0,
     ),
-    page=page,
 )
-sch.export_svg(svg_path, template=render_template)
-
-# Dynamic output size: rewrite <svg width/height> from fitted viewBox (tight canvas)
-svg_file = Path(svg_path)
-content = svg_file.read_text(encoding="utf-8")
-m = re.search(r'viewBox="([^"]+)"', content)
-size = re.search(r'<svg[^>]*width="([^"]+)"[^>]*height="([^"]+)"', content)
-if m and size:
-    _, _, vb_w, vb_h = [float(x) for x in m.group(1).split()]
-    output_scale = max(float(size.group(1)) / page.width, float(size.group(2)) / page.height)
-    content = re.sub(r'width="[^"]+"', f'width="{vb_w * output_scale:.1f}"', content, count=1)
-    content = re.sub(r'height="[^"]+"', f'height="{vb_h * output_scale:.1f}"', content, count=1)
-    svg_file.write_text(content, encoding="utf-8")
+sch.export_svg(str(svg_path), template=render_template, fit_to_content=True)
 
 print(svg_path)

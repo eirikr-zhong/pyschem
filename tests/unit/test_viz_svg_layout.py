@@ -26,7 +26,7 @@ import re
 import pytest
 
 import lib.symbols.symbols as _sym_mod
-from lib.core.part import NetLabel
+from lib.core.net import NetLabel
 from lib.core.part import Part
 from lib.core.page import PageConfig
 from lib.core.schematic import Schematic

@@ -265,13 +265,17 @@ class TestRenderStyle:
         assert merged.value_text.offset == 6.0
 
     def test_RS23_default_has_no_none_fields_anywhere(self):
-        """RS-23: RenderStyle.default() tree has no None field values."""
+        """RS-23: RenderStyle.default() tree has no None field values (except opt-in scaling)."""
         rs = RenderStyle.default()
+        # canvas_target_min_font_px is intentionally None by default (opt-in auto-scaling)
+        _ALLOWED_NONE = {"canvas_target_min_font_px"}
 
         def _walk(value, path: str = "root"):
             if dataclasses.is_dataclass(value):
                 for f in dataclasses.fields(value):
                     _walk(getattr(value, f.name), f"{path}.{f.name}")
+                return
+            if path.rsplit(".", 1)[-1] in _ALLOWED_NONE:
                 return
             assert value is not None, f"Found None at {path}"
 

@@ -21,6 +21,7 @@ SCH-20  test_sheets_property_returns_copy_with_main
 import pytest
 
 from lib.core.part import Part
+from lib.core.render_style import TextPlacementStyle
 from lib.core.schematic import Schematic, Sheet
 from lib.core.style import Style
 
@@ -124,6 +125,7 @@ def test_place_sets_style_on_part() -> None:
     """place() must set a Style on the part."""
     sch = Schematic("test")
     part = Part(lib_id="Device:R", ref="R1")
+    part.set_style(Style(ref_text=TextPlacementStyle(visible=False)))
     sch.add_part(part)
     
     sch.place(part, x=10.0, y=20.0)
@@ -131,6 +133,8 @@ def test_place_sets_style_on_part() -> None:
     style = part.get_style()
     assert style.x == 10.0
     assert style.y == 20.0
+    assert style.ref_text is not None
+    assert style.ref_text.visible is False
 
 
 def test_place_all_params_stored_correctly() -> None:
@@ -172,15 +176,13 @@ def test_place_does_not_duplicate_existing_part() -> None:
     sch.place(part, x=1.0, y=2.0)
 
     assert len([p for p in sch.parts if p is part]) == 1
-
-
 # ---------------------------------------------------------------------------
 # render tests
 # ---------------------------------------------------------------------------
 
 def test_render_dot_writes_file(tmp_path) -> None:
     """render(fmt=dot) must write a DOT file."""
-    from lib.core.part import NetLabel
+    from lib.core.net import NetLabel
     from lib.core.connect import connect
 
     sch = Schematic("test")

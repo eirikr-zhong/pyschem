@@ -47,8 +47,9 @@ from __future__ import annotations
 import pytest
 
 import lib.symbols.symbols as _sym_mod
+from lib.core.net import NetLabel
 from lib.core.page import PageConfig
-from lib.core.part import Part, NetLabel
+from lib.core.part import Part
 from lib.core.render_style import (
     BoxStyle,
     HaloStyle,

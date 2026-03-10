@@ -18,9 +18,9 @@ from pathlib import Path
 from typing import Optional
 
 from lib.core.connect import connect as _connect_pins, derive_nets
-from lib.core.net import Net
+from lib.core.net import Net, NetLabel
 from lib.core.page import PageConfig
-from lib.core.part import NetLabel, Part, Pin
+from lib.core.part import Part, Pin
 from lib.core.style import Style
 from lib.errors import RenderPathError
 
@@ -157,11 +157,18 @@ class Schematic:
         anchor: str = "center",
         rotation: int = 0,
         locked: bool = True,
+        style: "Style | None" = None,
     ) -> None:
         if not any(existing is part for existing in self._parts):
             self.add_part(part)
-        style = Style(x=x, y=y, anchor=anchor, rotation=rotation, locked=locked)
-        part.set_style(style)
+        # Preserve existing per-part render settings (for example Junction/NetLabel
+        # ref-text visibility defaults) while applying placement parameters.
+        base_style = part.get_style().merge(
+            Style(x=x, y=y, anchor=anchor, rotation=rotation, locked=locked)
+        )
+        if style is not None:
+            base_style = base_style.merge(style)
+        part.set_style(base_style)
 
     def _build_dot(self) -> str:
         """Build a DOT graph from the pin-graph–derived nets."""
@@ -215,10 +222,13 @@ class Schematic:
         height: float = 0,
         template: Optional["RenderTemplate"] = None,
         debug: bool = False,
+        viewbox: Optional[tuple[float, float, float, float]] = None,
+        fit_to_content: bool = False,
     ) -> str:
         from lib.render.schematic_svg import render_schematic_svg
         return render_schematic_svg(self, page=page, width=width, height=height,
-                                    template=template, debug=debug)
+                                    template=template, debug=debug, viewbox=viewbox,
+                                    fit_to_content=fit_to_content)
 
     def get_svg_string(
         self,
@@ -260,9 +270,12 @@ class Schematic:
         height: float = 0,
         template: Optional["RenderTemplate"] = None,
         debug: bool = False,
+        viewbox: Optional[tuple[float, float, float, float]] = None,
+        fit_to_content: bool = False,
     ) -> None:
         content = self._build_svg(page=page, width=width, height=height,
-                                  template=template, debug=debug)
+                                  template=template, debug=debug, viewbox=viewbox,
+                                  fit_to_content=fit_to_content)
         out = Path(path).expanduser()
         try:
             out.parent.mkdir(parents=True, exist_ok=True)

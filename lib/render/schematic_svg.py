@@ -116,8 +116,9 @@ _ROW_HEIGHT = 140       # auto-layout: vertical spacing between parts in a colum
 _PARTS_PER_COL = 4      # max parts per column before wrapping to a new column
 
 # Obstacle avoidance
-_OBSTACLE_CLEARANCE = -2.0  # temporary plan-2 tuning: shrink obstacle box by 3px vs prior +1.0
-_OBSTACLE_HORIZONTAL_EXTRA = 1.0  # widen obstacle boxes by +1px per side (x only)
+_OBSTACLE_CLEARANCE = 0.0  # no expansion/shrinkage — obstacle matches component body exactly
+_OBSTACLE_HORIZONTAL_EXTRA = 0.0  # no extra horizontal padding
+_ROUTING_GAP = 6.0  # routing gap (px) used when detouring around obstacles
 
 # Cross-net wire avoidance
 _WIRE_SEG_CLEARANCE = 4   # px clearance zone around each drawn wire segment
@@ -433,6 +434,8 @@ def render_schematic_svg(
     height: float = 0,
     template: Optional["_RenderTemplateT"] = None,
     debug: bool = False,
+    viewbox: tuple[float, float, float, float] | None = None,
+    fit_to_content: bool = False,
 ) -> str:
     """Render *schematic* to an SVG string.
 
@@ -517,6 +520,30 @@ def render_schematic_svg(
         canvas_w = default_page.width
         canvas_h = default_page.height
 
+    # Auto-scale: enlarge output dimensions so the smallest font meets the
+    # target minimum pixel size on the final canvas.
+    # Only applied when page is passed directly (not via template), so that
+    # explicit template dimensions are preserved exactly.
+    if page is not None:
+        target_min = getattr(canvas_style, "canvas_target_min_font_px", None)
+        scale_min = getattr(canvas_style, "canvas_scale_min", None)
+        scale_max = getattr(canvas_style, "canvas_scale_max", None)
+        if target_min is not None and scale_min is not None and scale_max is not None:
+            from lib.core.render_style import NetLabelStyle as _NetLabelStyle
+            label_net_style = canvas_style.label_net or _NetLabelStyle.default()
+            baseline = min(
+                font_ref,
+                font_net,
+                font_value,
+                font_pin,
+                _style_value(label_net_style.font_size, field_name="label_net.font_size"),
+            )
+            if baseline > 0:
+                raw_scale = target_min / baseline
+                auto_scale = max(scale_min, min(scale_max, raw_scale))
+                canvas_w *= auto_scale
+                canvas_h *= auto_scale
+
     # --- Phase 1: compute part positions ------------------------------------
     from lib.core.junction import Junction
     from lib.core.part import NetLabel
@@ -527,13 +554,21 @@ def render_schematic_svg(
         ref = part.ref or f"_part{idx}"
         part_style = resolve_style(part, tmpl)
         if isinstance(part, NetLabel):
+            # Determine value_text position: part's own setting wins over default "center"
+            part_own_style = part.get_style()
+            part_own_vt = part_own_style.value_text if part_own_style else None
+            vt_position = (
+                part_own_vt.position
+                if part_own_vt is not None and part_own_vt.position is not None
+                else "center"
+            )
             part_style = part_style.merge(
                 Style(
                     rotation=_netlabel_rotation(part.direction, fallback=part_style.rotation),
                     ref_text=TextPlacementStyle(visible=False),
                     value_text=TextPlacementStyle(
-                        position="center",
-                        offset=0.0,
+                        position=vt_position,
+                        offset=part_own_vt.offset if part_own_vt is not None and part_own_vt.offset is not None else 0.0,
                         visible=True,
                         rotation_mode="component",
                     ),
@@ -655,16 +690,15 @@ def render_schematic_svg(
                 pts.append(pin_endpoints[key])
 
         had_single_real_endpoint = len(pts) <= 1
-        if had_single_real_endpoint:
-            # NetLabel pins are intentionally excluded from derive_nets()
-            # results, but their endpoints must still participate in rendering
-            # so one-pin named nets visibly connect to their label flag.
-            for netlabel in netlabel_parts:
-                if netlabel.net_name != net.name:
-                    continue
-                label_endpoint = _netlabel_component_endpoint(netlabel, component_pin_ids)
-                if label_endpoint is not None:
-                    pts.append(label_endpoint)
+        # NetLabel pins are intentionally excluded from derive_nets()
+        # results, but their endpoints must still participate in rendering
+        # so wires visibly connect to their label flag.
+        for netlabel in netlabel_parts:
+            if netlabel.net_name != net.name:
+                continue
+            label_endpoint = _netlabel_component_endpoint(netlabel, component_pin_ids)
+            if label_endpoint is not None:
+                pts.append(label_endpoint)
 
         pts = list(dict.fromkeys(pts))
         if pts:
@@ -689,8 +723,8 @@ def render_schematic_svg(
     canvas = _TrackingCanvas(canvas_w, canvas_h, background=background)
 
     # Title
-    canvas.text(canvas_w / 2, 20, schematic.name,
-                font_size=font_ref, anchor="middle", dominant_baseline="middle")
+    canvas.text(_MARGIN, 20, schematic.name,
+                font_size=font_ref, anchor="start", dominant_baseline="middle")
 
     # Draw all symbols
     for idx, part in enumerate(parts):
@@ -722,7 +756,8 @@ def render_schematic_svg(
             field_name="pin_font_size",
         )
         if isinstance(part, Junction):
-            if part.ref:
+            ref_visible = (part_style.ref_text or TextPlacementStyle.default_ref()).visible
+            if part.ref and ref_visible is not False:
                 canvas.text(
                     cx,
                     cy,
@@ -805,7 +840,7 @@ def render_schematic_svg(
         )
 
     # --- Phase 5: apply fit-to-content viewBox -----------------------------
-    return canvas.to_svg_fit(margin=_MARGIN)
+    return canvas.to_svg_fit(margin=_MARGIN, viewbox=viewbox, fit_size=fit_to_content)
 
 
 # ---------------------------------------------------------------------------
@@ -1406,18 +1441,30 @@ def _draw_wire_net(
             if debug_trunks is not None:
                 debug_trunks.append((trunk_x, trunk_y_min, trunk_y_max))
 
-            # Vertical trunk (may be split into segments to avoid obstacles)
-            if trunk_y_min < trunk_y_max:
+            # Vertical trunk — split at each on-trunk pin y so that
+            # every pin endpoint appears as an explicit wire node.
+            on_trunk_ys = sorted({
+                py for px, py in trunk_points
+                if abs(px - trunk_x) <= 0.5
+            })
+            # Include trunk boundaries
+            split_ys = sorted(set([trunk_y_min] + on_trunk_ys + [trunk_y_max]))
+            for seg_i in range(len(split_ys) - 1):
+                sy_min = split_ys[seg_i]
+                sy_max = split_ys[seg_i + 1]
+                if sy_max - sy_min < 0.5:
+                    continue
                 _draw_vertical_avoiding(
-                    canvas, trunk_x, trunk_y_min, trunk_y_max, eff_obstacles,
+                    canvas, trunk_x, sy_min, sy_max, eff_obstacles,
                     wire_color=wire_color, wire_width=wire_width, wire_dash=wire_dash,
                 )
 
             # Horizontal stubs from each trunk-routed point to trunk
             trunk_touch_points: set[tuple[float, float]] = set()
+            actual_trunk_connections: dict[tuple[float, float], tuple[float, float]] = {}
             for px, py in trunk_points:
                 if abs(px - trunk_x) > 0.5:
-                    _draw_horizontal_stub(
+                    actual_conn = _draw_horizontal_stub(
                         canvas,
                         px,
                         py,
@@ -1429,6 +1476,7 @@ def _draw_wire_net(
                         wire_dash=wire_dash,
                     )
                     trunk_touch_points.add((px, py))
+                    actual_trunk_connections[(px, py)] = actual_conn
                     continue
 
                 trunk_touch_points.add((px, py))
@@ -1446,8 +1494,8 @@ def _draw_wire_net(
                     continue
 
                 blocker = local_blockers[0]
-                escape_left = blocker.x0 - _OBSTACLE_CLEARANCE
-                escape_right = blocker.x1 + _OBSTACLE_CLEARANCE
+                escape_left = blocker.x0 - _ROUTING_GAP
+                escape_right = blocker.x1 + _ROUTING_GAP
                 if abs(escape_left - trunk_x) <= abs(escape_right - trunk_x):
                     escape_x = escape_left
                 else:
@@ -1483,7 +1531,31 @@ def _draw_wire_net(
             # - Additionally, draw junctions where 2+ stubs share the same y.
             y_counts = Counter(round(y, 1) for _, y in trunk_touch_points)
             drawn_junction_keys: set[tuple[float, float]] = set()
+            for endpoint, actual_conn in actual_trunk_connections.items():
+                _, py = endpoint
+                actual_x, actual_y = actual_conn
+                py_round = round(py, 1)
+                # Draw junction if: 2+ stubs at same y, OR this stub hits interior of trunk
+                is_interior = trunk_y_min < actual_y < trunk_y_max
+                is_multi = y_counts[py_round] >= 2
+                if is_interior or is_multi:
+                    key = (round(actual_x, 2), round(actual_y, 2))
+                    if key in suppressed_keys or key in drawn_junction_keys:
+                        continue
+                    drawn_junction_keys.add(key)
+                    canvas.circle(
+                        actual_x,
+                        actual_y,
+                        junction_r,
+                        stroke=junction_color,
+                        stroke_width=0,
+                        fill=junction_color,
+                    )
+            
+            # Also draw junctions for points directly on trunk (no horizontal stub)
             for _, py in trunk_touch_points:
+                if (_, py) in actual_trunk_connections:
+                    continue  # Already handled above
                 py_round = round(py, 1)
                 # Draw junction if: 2+ stubs at same y, OR this stub hits interior of trunk
                 is_interior = trunk_y_min < py < trunk_y_max
@@ -1538,7 +1610,7 @@ def _choose_trunk_x(
     def trunk_clear(tx: float) -> bool:
         return not _any_obstacle_hit(obstacles, tx, y_min, tx, y_max)
 
-    step = _OBSTACLE_CLEARANCE * 2
+    step = max(_OBSTACLE_CLEARANCE * 2, _ROUTING_GAP)
     candidates: list[float] = []
 
     def add_candidate(tx: float) -> None:
@@ -1595,8 +1667,8 @@ def _choose_trunk_x(
                 hard_blocks += 1
 
             first_blocker = _pick_first_horizontal_blocker(px, tx, blocking)
-            detour_y_top = first_blocker.y0 - _OBSTACLE_CLEARANCE
-            detour_y_bot = first_blocker.y1 + _OBSTACLE_CLEARANCE
+            detour_y_top = first_blocker.y0 - _ROUTING_GAP
+            detour_y_bot = first_blocker.y1 + _ROUTING_GAP
             detour_options = [detour_y_top, detour_y_bot]
             best_detour_y = min(
                 detour_options,
@@ -1707,7 +1779,7 @@ def _draw_vertical_avoiding(
         if wire_dash is None
         else wire_dash
     )
-    gap = _OBSTACLE_CLEARANCE
+    gap = max(abs(_OBSTACLE_CLEARANCE), 6.0)
 
     # Collect obstacles that block the vertical trunk segment
     blocking = [o for o in obstacles if o.segment_hits(x, y_min, x, y_max)]
@@ -1793,11 +1865,13 @@ def _draw_horizontal_stub(
     wire_color: str | None = None,
     wire_width: float | None = None,
     wire_dash: str | None = None,
-) -> None:
+) -> tuple[float, float]:
     """Draw a horizontal stub from (px, py) to (trunk_x, py).
 
     If the straight segment passes through an obstacle, a 3-segment detour
     is drawn around the obstacle (going above or below it).
+    
+    Returns the actual connection point on the trunk (may differ from trunk_x if detour occurred).
     """
     default_wire = _default_wire_style()
     wire_color = (
@@ -1820,7 +1894,7 @@ def _draw_horizontal_stub(
             px, py, trunk_x, py,
             stroke=wire_color, stroke_width=wire_width, stroke_dasharray=wire_dash
         )
-        return
+        return (trunk_x, py)
 
     # Find the blocking obstacle and route around it
     blocking = [o for o in obstacles if o.segment_hits(px, py, trunk_x, py)]
@@ -1829,7 +1903,7 @@ def _draw_horizontal_stub(
             px, py, trunk_x, py,
             stroke=wire_color, stroke_width=wire_width, stroke_dasharray=wire_dash
         )
-        return
+        return (trunk_x, py)
 
     # Special case: endpoint lies in obstacle clearance and the requested
     # segment exits that clearance outward. In this constrained-pin case we
@@ -1855,11 +1929,11 @@ def _draw_horizontal_stub(
             px, py, trunk_x, py,
             stroke=wire_color, stroke_width=wire_width, stroke_dasharray=wire_dash
         )
-        return
+        return (trunk_x, py)
 
     obs = _pick_first_horizontal_blocker(px, trunk_x, blocking)
     # Detour above or below the obstacle
-    gap = _OBSTACLE_CLEARANCE
+    gap = _ROUTING_GAP
     detour_y_top = obs.y0 - gap
     detour_y_bot = obs.y1 + gap
 
@@ -1910,6 +1984,12 @@ def _draw_horizontal_stub(
             trunk_x, dy, trunk_x, py,
             stroke=wire_color, stroke_width=wire_width, stroke_dasharray=wire_dash
         )
+    
+    # Return the actual connection point on the trunk
+    if join_without_backtrack:
+        return (trunk_x, dy)
+    else:
+        return (trunk_x, py)
 
 
 def _draw_manhattan_wire(
@@ -2048,7 +2128,7 @@ def _draw_manhattan_wire(
 
     # Both L-routes blocked → detour around the first blocking obstacle
     obs = blocking[0]
-    gap = _OBSTACLE_CLEARANCE
+    gap = _ROUTING_GAP
 
     # Try routing above and below the obstacle; pick shorter total path
     # Route above: go to y = obs.y0 - gap, across, then down
@@ -2132,7 +2212,7 @@ def _draw_segment_avoiding(
         )
         return
 
-    gap = _OBSTACLE_CLEARANCE
+    gap = _ROUTING_GAP
 
     # Horizontal segment blocked → detour above or below
     if abs(y0 - y1) < 0.5:
@@ -2481,13 +2561,18 @@ class _TrackingCanvas(SvgCanvas):
     # Fit-to-content serialisation
     # ------------------------------------------------------------------
 
-    def to_svg_fit(self, margin: float = 40) -> str:
+    def to_svg_fit(self, margin: float = 40, viewbox: tuple[float, float, float, float] | None = None, fit_size: bool = False) -> str:
         """Return SVG string with viewBox fitted to content + *margin*.
 
         Args:
             margin: Extra whitespace around tracked content in viewBox units.
+            viewbox: Optional explicit (x, y, w, h) to override fit-to-content.
+            fit_size: If True, set SVG width/height to match the viewBox dimensions
+                      instead of the original canvas size (fit-to-content output).
         """
-        if self._min_x == float("inf"):
+        if viewbox is not None:
+            vb_x, vb_y, vb_w, vb_h = viewbox
+        elif self._min_x == float("inf"):
             # Nothing was drawn — fall back to full-page viewBox
             header = (
                 f'<?xml version="1.0" encoding="UTF-8"?>\n'
@@ -2502,20 +2587,21 @@ class _TrackingCanvas(SvgCanvas):
                 )
             body = "\n".join(f"  {el}" for el in self._elements)
             return header + body + "\n</svg>\n"
+        else:
+            vb_x = self._min_x - margin
+            vb_y = self._min_y - margin
+            vb_w = (self._max_x - self._min_x) + 2 * margin
+            vb_h = (self._max_y - self._min_y) + 2 * margin
+            # Clamp to non-negative
+            vb_w = max(vb_w, 1)
+            vb_h = max(vb_h, 1)
 
-        vb_x = self._min_x - margin
-        vb_y = self._min_y - margin
-        vb_w = (self._max_x - self._min_x) + 2 * margin
-        vb_h = (self._max_y - self._min_y) + 2 * margin
-
-        # Clamp to non-negative
-        vb_w = max(vb_w, 1)
-        vb_h = max(vb_h, 1)
-
+        svg_w = f"{vb_w:.1f}" if fit_size else f"{self._width}"
+        svg_h = f"{vb_h:.1f}" if fit_size else f"{self._height}"
         header = (
             f'<?xml version="1.0" encoding="UTF-8"?>\n'
             f'<svg xmlns="http://www.w3.org/2000/svg"'
-            f' width="{self._width}" height="{self._height}"'
+            f' width="{svg_w}" height="{svg_h}"'
             f' viewBox="{vb_x:.1f} {vb_y:.1f} {vb_w:.1f} {vb_h:.1f}">\n'
         )
         if self._background and self._background != "none":

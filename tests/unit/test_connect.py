@@ -2,7 +2,8 @@ import pytest
 from typing import Any
 
 from lib.core.connect import connect, derive_nets
-from lib.core.part import NetLabel, Part
+from lib.core.net import NetLabel
+from lib.core.part import Part
 
 
 class TestConnect:

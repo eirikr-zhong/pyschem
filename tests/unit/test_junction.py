@@ -42,3 +42,4 @@ def test_junction_renders_as_dot_without_missing_symbol_placeholder() -> None:
     svg = sch.get_svg_string()
     assert "<circle" in svg
     assert "? power:Junction" not in svg
+    assert ">J1<" not in svg

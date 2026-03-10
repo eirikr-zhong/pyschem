@@ -1,16 +1,16 @@
 [build-system]
-requires = ["setuptools>=65.0", "wheel"]
+requires = ["setuptools>=65.0", "wheel", "setuptools-scm>=8.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyschem"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Python schematic rendering library"
 readme = "README.md"
 requires-python = ">=3.9"
 license = {text = "MIT"}
 authors = [
-    {name = "PySchem Team", email = "team@pyschem.dev"}
+    {name = "eirikr-zhong", email = "eirikrzhong@gmail.com"}
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -29,13 +29,20 @@ dependencies = [
 dev = [
     "pytest>=7.4.0",
     "pytest-cov>=4.1.0",
+    "pytest-xdist>=3.5.0",
     "ruff>=0.1.0",
     "mypy>=1.5.0",
 ]
 
 [project.urls]
-Homepage = "https://github.com/pyschem-dev/pyschem"
-Repository = "https://github.com/pyschem-dev/pyschem"
+Homepage = "https://github.com/eirikr-zhong/pyschem"
+Repository = "https://github.com/eirikr-zhong/pyschem"
+
+[tool.setuptools_scm]
+# Version is derived from git tags (e.g. v0.1.0 -> 0.1.0).
+# Run `git tag v0.1.0` then `git push --tags` to trigger a release.
+version_scheme = "release-branch-semver"
+local_scheme = "no-local-version"
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -46,7 +53,7 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "-v --strict-markers --tb=short"
+addopts = "-v --strict-markers --tb=short -n auto"
 markers = [
     "unit: unit tests, no external files or network",
     "integration: integration tests, depends on real KiCad sample files",

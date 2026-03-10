@@ -116,9 +116,6 @@ template = RenderTemplate.from_style(
 )
 ```
 
-Legacy `RenderStyle` is still supported for compatibility but is deprecated.
-See `docs/STYLE_MIGRATION.md` for full old-to-new field mapping.
-
 ---
 
 ## Commit Conventions
@@ -227,4 +224,4 @@ Use `tmp_path` (pytest built-in) for files generated during tests.
 
 ## Troubleshooting Notes
 
-- Q1.B routing branch readability issue: `docs/Q1B_ROUTING_TROUBLESHOOTING.md`
+Nothing here yet.

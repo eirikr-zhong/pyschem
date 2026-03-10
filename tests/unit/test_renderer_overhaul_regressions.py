@@ -21,8 +21,9 @@ import pytest
 
 import lib.symbols.symbols as _sym_mod
 from lib.core.junction import Junction
+from lib.core.net import NetLabel
 from lib.core.page import PageConfig
-from lib.core.part import NetLabel, Part
+from lib.core.part import Part
 from lib.core.render_style import RenderStyle, RenderTemplate, WireStyle
 from lib.core.schematic import Schematic
 from lib.render.schematic_svg import _MARGIN
@@ -584,4 +585,4 @@ class TestRendererOverhaulRegressions:
             "Expected R1(1), R2(2), and Q1(B) branches to reach explicit junction target"
         )
 
-        assert f">{junction.ref}<" in svg
+        assert f">{junction.ref}<" not in svg

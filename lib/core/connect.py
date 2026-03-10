@@ -9,7 +9,7 @@ objects (the **pin graph**).  The single entry point for wiring is
 Nets are **derived** from the pin graph by :func:`derive_nets`, which
 performs a BFS over all pins in a schematic and groups them into connected
 components.  Each component becomes a :class:`~lib.core.net.Net`.  If the
-component contains a :class:`~lib.core.part.NetLabel` pin, the net takes
+component contains a :class:`~lib.core.net.NetLabel` pin, the net takes
 that label's name; otherwise it receives an auto-generated ``_anonN`` name.
 
 Thread-safety
@@ -22,8 +22,8 @@ from __future__ import annotations
 
 from typing import Union
 
-from lib.core.net import Net
-from lib.core.part import NetLabel, Part, Pin
+from lib.core.net import Net, NetLabel
+from lib.core.part import Part, Pin
 
 # Sentinel prefix for auto-generated anonymous net names.
 _ANON_PREFIX = "_anon"
@@ -37,7 +37,8 @@ def connect(*pins: Pin) -> None:
     Examples::
 
         from lib.core.connect import connect
-        from lib.core.part import Part, NetLabel
+        from lib.core.net import NetLabel
+        from lib.core.part import Part
 
         r1 = Part("Device:R", ref="R1")
         r2 = Part("Device:R", ref="R2")

@@ -296,16 +296,15 @@ class TestFitToContent:
         )
 
     def test_svg_width_height_reflect_page_size(self):
-        """FIT-03: width/height attrs on <svg> include adaptive output scaling."""
+        """FIT-03: width/height attrs on <svg> match page dimensions (no auto-scale by default)."""
         page = PageConfig(width=800, height=600)
         sch = Schematic("page_dims")
         r1 = Part("Device:R", ref="R1")
         sch.add_part(r1)
         svg = sch.get_svg_string(page=page)
         width, height = _extract_svg_dims(svg)
-        scale = _default_auto_scale()
-        assert width == pytest.approx(page.width * scale)
-        assert height == pytest.approx(page.height * scale)
+        assert width == pytest.approx(page.width)
+        assert height == pytest.approx(page.height)
 
     def test_empty_schematic_has_viewbox(self):
         """FIT-04: empty schematic still produces valid SVG with viewBox."""

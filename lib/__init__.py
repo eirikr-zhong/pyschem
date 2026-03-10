@@ -19,6 +19,7 @@ from lib.symbols.symbol_parser import (
 from lib.core import (
     BoxStyle,
     DefaultPlacementStyle,
+    GroundNet,
     HaloStyle,
     Junction,
     Net,
@@ -61,6 +62,7 @@ __all__ = [
     "Pin",
     "Net",
     "NetLabel",
+    "GroundNet",
     "Junction",
     "Style",
     "DefaultPlacementStyle",

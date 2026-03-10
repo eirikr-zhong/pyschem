@@ -394,6 +394,9 @@ class RenderStyle:
     value_font_size: Optional[float] = None
     net_font_size: Optional[float] = None
     pin_font_size: Optional[float] = None
+    canvas_target_min_font_px: Optional[float] = None
+    canvas_scale_min: Optional[float] = None
+    canvas_scale_max: Optional[float] = None
 
     @classmethod
     def default(cls) -> "RenderStyle":
@@ -412,6 +415,9 @@ class RenderStyle:
             value_font_size=11.0,
             net_font_size=12.0,
             pin_font_size=10.0,
+            canvas_target_min_font_px=None,
+            canvas_scale_min=1.0,
+            canvas_scale_max=4.0,
         )
 
     def merge(self, override: "RenderStyle") -> "RenderStyle":

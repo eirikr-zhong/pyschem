@@ -256,7 +256,7 @@ def test_available_pins_excludes_tilde_names() -> None:
 
 def test_bjt_pin_names_connectable_to_net() -> None:
     """Named pins can be connected to a NetLabel exactly like numbered pins."""
-    from lib.core.part import NetLabel
+    from lib.core.net import NetLabel
 
     q1 = _bjt_part()
     base_label = NetLabel("BASE")

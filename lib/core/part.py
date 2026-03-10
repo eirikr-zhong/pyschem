@@ -1,12 +1,10 @@
-"""Part, Pin, and NetLabel classes for schematic components.
+"""Part and Pin classes for schematic components.
 
 vNext architecture: connections are driven by Pin.connect().
 """
 
 from __future__ import annotations
 
-import itertools
-from functools import lru_cache
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Optional, Union, cast
 
@@ -25,51 +23,6 @@ def _generate_ref() -> str:
     global _ref_counter
     _ref_counter += 1
     return f"U{_ref_counter}"
-
-
-# Counter for auto-generated NetLabel refs
-_net_label_counter = itertools.count(1)
-
-
-@lru_cache(maxsize=1)
-def _default_netlabel_symbol_data() -> "SymbolData":
-    """Return built-in SymbolData fallback for ``NetLabel``.
-
-    This keeps NetLabel rendering available even when external symbol
-    libraries are not configured.
-    """
-    from lib.symbols.data import PinDefinition, SymbolData, SymbolPrimitive
-
-    return SymbolData(
-        name="NetLabel",
-        lib="NetLabel",
-        pins=[
-            PinDefinition(
-                number="1",
-                name="~",
-                type="passive",
-                x=0.0,
-                y=0.0,
-                orientation=180,
-                length=15.24,
-            ),
-        ],
-        primitives=[
-            SymbolPrimitive(
-                kind="polygon",
-                points=[
-                    (0.0, 0.0),
-                    (8.0, -6.0),
-                    (34.0, -6.0),
-                    (34.0, 6.0),
-                    (8.0, 6.0),
-                    (0.0, 0.0),
-                ],
-                stroke_width=1.2,
-                fill="background",
-            ),
-        ],
-    )
 
 
 @dataclass
@@ -260,68 +213,6 @@ class Part:
         return dict(self._pins)
 
 
-class NetLabel(Part):
-    """Single-pin special component that assigns a name to a net.
-
-    A ``NetLabel`` is a positionable component with exactly one pin.
-    When its pin is connected to other pins in the pin graph, the
-    entire connected component is assigned this label's ``net_name``.
-
-    This replaces the old ``LabelNet`` class.  Unlike ``LabelNet``,
-    ``NetLabel`` is a real component (``Part`` subclass) that can be
-    placed, positioned, and styled in the schematic.
-
-    Render semantics
-    ~~~~~~~~~~~~~~~~
-    ``NetLabel`` now renders through the standard symbol pipeline like
-    any other :class:`Part`.
-
-    Attributes:
-        net_name:  The net name this label assigns (e.g. ``"VCC"``,
-                   ``"GND"``).
-        direction: Visual direction of the flag label.
-                   One of ``"left"``, ``"right"``, ``"top"``, ``"bottom"``.
-    """
-
-    net_name: str
-    direction: str
-
-    def __init__(
-        self,
-        name: str,
-        *,
-        direction: str = "right",
-        ref: Optional[str] = None,
-    ) -> None:
-        self.net_name = name
-        self.direction = direction
-        super().__init__(
-            lib_id="NetLabel:NetLabel",
-            ref=ref or f"#NL{next(_net_label_counter)}",
-            value=name,
-        )
-        if self._symbol_data is None:
-            try:
-                from lib.symbols import get_default_symbols
-
-                symbols = get_default_symbols()
-                if symbols is not None:
-                    from_library = symbols.get_symbol("net_labels", "NetLabel")
-                    if from_library is not None:
-                        self.attach_symbol(from_library)
-            except Exception:
-                pass
-        if self._symbol_data is None:
-            self.attach_symbol(_default_netlabel_symbol_data())
-        # Pre-create the single pin.
-        self.pin("1")
-
-    @property
-    def label_pin(self) -> Pin:
-        """The single connection pin of this NetLabel."""
-        return self.pins["1"]
-
-
 def parse_pins(part: "Part", pin_spec: str) -> list[Pin]:
     """Parse a space-separated pin specification string into a list of Pins.
 
@@ -334,3 +225,19 @@ def parse_pins(part: "Part", pin_spec: str) -> list[Pin]:
         parse_pins(r1, '1 2')    -> [Pin('1'), Pin('2')]
     """
     return [part.pin(token) for token in pin_spec.split() if token]
+
+
+if TYPE_CHECKING:
+    # Backward-compatible typing re-export; runtime is resolved lazily to
+    # avoid circular imports (lib.core.net imports Part/Pin from this module).
+    from lib.core.net import GroundNet, NetLabel
+
+
+def __getattr__(name: str) -> object:
+    """Lazy compatibility re-export for NetLabel/GroundNet."""
+    if name in {"NetLabel", "GroundNet"}:
+        from lib.core.net import GroundNet, NetLabel
+
+        exports = {"NetLabel": NetLabel, "GroundNet": GroundNet}
+        return exports[name]
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

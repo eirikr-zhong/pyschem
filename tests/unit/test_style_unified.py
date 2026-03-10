@@ -50,6 +50,8 @@ def _extract_text_xy(svg: str, text: str) -> tuple[float, float]:
 
 def test_style_default_has_complete_render_defaults() -> None:
     style = Style.default()
+    # canvas_target_min_font_px is intentionally None by default (opt-in auto-scaling)
+    _ALLOWED_NONE = {"canvas_target_min_font_px"}
 
     def _walk(value: object, path: str = "root") -> None:
         if dataclasses.is_dataclass(value):
@@ -57,6 +59,8 @@ def test_style_default_has_complete_render_defaults() -> None:
                 if path == "root" and f.name in {"x", "y"}:
                     continue
                 _walk(getattr(value, f.name), f"{path}.{f.name}")
+            return
+        if path.rsplit(".", 1)[-1] in _ALLOWED_NONE:
             return
         assert value is not None, f"Found None render default at {path}"
 

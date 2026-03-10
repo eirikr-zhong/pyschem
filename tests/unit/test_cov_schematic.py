@@ -11,7 +11,8 @@ from __future__ import annotations
 
 import pytest
 
-from lib.core.part import NetLabel, Part
+from lib.core.net import NetLabel
+from lib.core.part import Part
 from lib.core.schematic import Schematic
 from lib.errors import ERCError, RenderPathError
 
