@@ -186,7 +186,7 @@ class _Obstacle:
     from vertical body edges.
     """
 
-    __slots__ = ("x0", "y0", "x1", "y1")
+    __slots__ = ("x0", "y0", "x1", "y1", "component_ref", "pin_endpoints")
 
     def __init__(
         self,
@@ -195,12 +195,18 @@ class _Obstacle:
         x1: float,
         y1: float,
         clearance: float = _OBSTACLE_CLEARANCE,
+        component_ref: str | None = None,
     ) -> None:
         horizontal_clearance = clearance + _OBSTACLE_HORIZONTAL_EXTRA
         self.x0 = x0 - horizontal_clearance
         self.y0 = y0 - clearance
         self.x1 = x1 + horizontal_clearance
         self.y1 = y1 + clearance
+        # Component obstacles populate this after all world-space pin
+        # endpoints are known.  Generic and wire-segment obstacles keep the
+        # legacy endpoint-escape behaviour because they have no owner.
+        self.component_ref = component_ref
+        self.pin_endpoints: set[tuple[float, float]] = set()
 
     def contains_point(self, x: float, y: float) -> bool:
         return self.x0 <= x <= self.x1 and self.y0 <= y <= self.y1
@@ -213,7 +219,7 @@ class _Obstacle:
         Only horizontal and vertical segments are considered (Manhattan routing).
         Diagonal segments are not used by this router.
 
-        Endpoints that sit exactly on the expanded boundary are *not* counted
+        Endpoints that sit exactly on the expanded boundary are not counted
         as hits because pin stubs legitimately start/end at the box edge.
         """
         eps = 0.5  # small tolerance
@@ -235,6 +241,47 @@ class _Obstacle:
 
         return False  # neither h nor v — shouldn't happen
 
+    def segment_blocks(
+        self, ax: float, ay: float, bx: float, by: float
+    ) -> bool:
+        """Return whether a wire crosses this box or runs along an edge.
+
+        The SVG router uses this stricter predicate because primitive-only
+        symbol bodies can lie directly on a component AABB edge after
+        rotation.  ``segment_hits`` retains its historical interior-only
+        meaning for geometry callers that intentionally allow boundary touch.
+        """
+        eps = 0.5
+
+        if abs(ay - by) < eps:
+            y = (ay + by) / 2
+            if not (self.y0 - eps <= y <= self.y1 + eps):
+                return False
+            lo, hi = (min(ax, bx), max(ax, bx))
+            return lo < self.x1 - eps and hi > self.x0 + eps
+
+        if abs(ax - bx) < eps:
+            x = (ax + bx) / 2
+            if not (self.x0 - eps <= x <= self.x1 + eps):
+                return False
+            lo, hi = (min(ay, by), max(ay, by))
+            return lo < self.y1 - eps and hi > self.y0 + eps
+
+        return False
+
+
+def _segment_blocks_obstacle(
+    obstacle: object,
+    ax: float,
+    ay: float,
+    bx: float,
+    by: float,
+) -> bool:
+    """Use boundary-aware blocking for components, legacy rules for wire obstacles."""
+    if isinstance(obstacle, _Obstacle):
+        return obstacle.segment_blocks(ax, ay, bx, by)
+    return bool(obstacle.segment_hits(ax, ay, bx, by))
+
 
 def _any_obstacle_hit(
     obstacles: list[_Obstacle],
@@ -242,7 +289,7 @@ def _any_obstacle_hit(
     bx: float, by: float,
 ) -> bool:
     """Return True if any obstacle blocks the segment from A to B."""
-    return any(o.segment_hits(ax, ay, bx, by) for o in obstacles)
+    return any(_segment_blocks_obstacle(o, ax, ay, bx, by) for o in obstacles)
 
 
 def _moves_outward_from_obstacle(
@@ -281,6 +328,91 @@ def _moves_outward_from_obstacle(
     return False
 
 
+def _point_on_obstacle_boundary(
+    obstacle: object,
+    point: tuple[float, float],
+) -> bool:
+    """Return whether *point* lies on an obstacle boundary within router tolerance."""
+    ox0 = float(obstacle.x0)
+    oy0 = float(obstacle.y0)
+    ox1 = float(obstacle.x1)
+    oy1 = float(obstacle.y1)
+    px, py = point
+    eps = 0.5
+    return (
+        ox0 - eps <= px <= ox1 + eps
+        and oy0 - eps <= py <= oy1 + eps
+        and (
+            abs(px - ox0) < eps
+            or abs(px - ox1) < eps
+            or abs(py - oy0) < eps
+            or abs(py - oy1) < eps
+        )
+    )
+
+
+def _moves_off_obstacle_boundary(
+    obstacle: object,
+    from_pt: tuple[float, float],
+    to_pt: tuple[float, float],
+) -> bool:
+    """Return whether a boundary endpoint moves directly away from the box."""
+    ox0 = float(obstacle.x0)
+    oy0 = float(obstacle.y0)
+    ox1 = float(obstacle.x1)
+    oy1 = float(obstacle.y1)
+    fx, fy = from_pt
+    tx, ty = to_pt
+    eps = 0.5
+
+    if abs(fy - ty) < eps:
+        return (
+            (abs(fx - ox0) < eps and tx < fx)
+            or (abs(fx - ox1) < eps and tx > fx)
+        )
+    if abs(fx - tx) < eps:
+        return (
+            (abs(fy - oy0) < eps and ty < fy)
+            or (abs(fy - oy1) < eps and ty > fy)
+        )
+    return False
+
+
+def _is_component_pin_endpoint(
+    obstacle: object,
+    point: tuple[float, float],
+) -> bool:
+    """Return whether *point* is an electrical endpoint of this component."""
+    if not isinstance(obstacle, _Obstacle) or obstacle.component_ref is None:
+        return True
+    px, py = point
+    return any(
+        abs(px - endpoint_x) < 0.5 and abs(py - endpoint_y) < 0.5
+        for endpoint_x, endpoint_y in obstacle.pin_endpoints
+    )
+
+
+def _can_exit_obstacle(
+    obstacle: object,
+    from_pt: tuple[float, float],
+    to_pt: tuple[float, float],
+) -> bool:
+    """Return whether a segment may leave *obstacle* through ``from_pt``.
+
+    A point on the outer boundary may always move directly away because that
+    does not traverse the symbol.  For an interior point, only the obstacle
+    owner's actual external pin endpoint may use the escape exception.
+    """
+    if not _obstacle_contains_point(obstacle, *from_pt):
+        return False
+    if _point_on_obstacle_boundary(obstacle, from_pt):
+        return _moves_off_obstacle_boundary(obstacle, from_pt, to_pt)
+    return (
+        _is_component_pin_endpoint(obstacle, from_pt)
+        and _moves_outward_from_obstacle(obstacle, from_pt, to_pt)
+    )
+
+
 def _can_draw_straight(
     p0: tuple[float, float],
     p1: tuple[float, float],
@@ -296,16 +428,18 @@ def _can_draw_straight(
     is_aligned = abs(x0 - x1) < 0.5 or abs(y0 - y1) < 0.5
     if not is_aligned:
         return False
-    blocking = [obstacle for obstacle in obstacles if obstacle.segment_hits(x0, y0, x1, y1)]
+    blocking = [
+        obstacle
+        for obstacle in obstacles
+        if _segment_blocks_obstacle(obstacle, x0, y0, x1, y1)
+    ]
     if not blocking:
         return True
 
     for obstacle in blocking:
-        p0_inside = _obstacle_contains_point(obstacle, x0, y0)
-        p1_inside = _obstacle_contains_point(obstacle, x1, y1)
-        if p0_inside and _moves_outward_from_obstacle(obstacle, p0, p1):
+        if _can_exit_obstacle(obstacle, p0, p1):
             continue
-        if p1_inside and _moves_outward_from_obstacle(obstacle, p1, p0):
+        if _can_exit_obstacle(obstacle, p1, p0):
             continue
         return False
 
@@ -592,6 +726,7 @@ def render_schematic_svg(
 
     # --- Phase 1b: build obstacle list (one per component body) -------------
     obstacles: list[_Obstacle] = []
+    component_obstacles_by_ref: dict[str, _Obstacle] = {}
     debug_component_obstacles: list[tuple[str, _Obstacle]] = []
     for idx, part in enumerate(parts):
         if isinstance(part, Junction):
@@ -612,6 +747,8 @@ def render_schematic_svg(
             rotation=part_style.rotation,
         )
         obstacles.append(obs)
+        if part.ref:
+            component_obstacles_by_ref[part.ref] = obs
         if debug:
             debug_component_obstacles.append((ref, obs))
 
@@ -636,6 +773,15 @@ def render_schematic_svg(
             rotation=part_style.rotation,
         )
         pin_endpoints.update(ep)
+
+    # The wire router can only make an "escape from obstacle" exception for
+    # a pin of that obstacle's own component.  This prevents another part's
+    # pin, which happens to lie inside a rotated symbol's AABB, from making a
+    # segment through the symbol legal.
+    for (part_ref, _), endpoint in pin_endpoints.items():
+        obstacle = component_obstacles_by_ref.get(part_ref)
+        if obstacle is not None:
+            obstacle.pin_endpoints.add(endpoint)
     junction_refs = {part.ref for part in parts if isinstance(part, Junction)}
     junction_points = {
         point
@@ -1022,9 +1168,10 @@ def _component_obstacle(
         symbol_name=symbol_name,
         rotation=rotation,
     )
+    component_ref = part.ref or None
     if bbox is not None:
         x0, y0, x1, y1 = bbox
-        return _Obstacle(x0, y0, x1, y1)
+        return _Obstacle(x0, y0, x1, y1, component_ref=component_ref)
 
     # Fallback geometry used by unresolved-symbol placeholders.
     resolved_box = box_style or _default_box_style()
@@ -1036,7 +1183,7 @@ def _component_obstacle(
     )
     w = _style_value(resolved_box.width, field_name="box.width")
     x0, y0 = cx - w / 2, cy - h / 2
-    return _Obstacle(x0, y0, x0 + w, y0 + h)
+    return _Obstacle(x0, y0, x0 + w, y0 + h, component_ref=component_ref)
 
 
 # ---------------------------------------------------------------------------
@@ -1487,7 +1634,9 @@ def _draw_wire_net(
                 local_blockers = [
                     obstacle
                     for obstacle in eff_obstacles
-                    if obstacle.segment_hits(trunk_x, trunk_y_min, trunk_x, trunk_y_max)
+                    if _segment_blocks_obstacle(
+                        obstacle, trunk_x, trunk_y_min, trunk_x, trunk_y_max
+                    )
                     and _obstacle_contains_point(obstacle, px, py)
                 ]
                 if not local_blockers:
@@ -1658,7 +1807,9 @@ def _choose_trunk_x(
         for px, py in pts:
             if abs(px - tx) <= 0.5:
                 continue
-            blocking = [o for o in obstacles if o.segment_hits(px, py, tx, py)]
+            blocking = [
+                o for o in obstacles if _segment_blocks_obstacle(o, px, py, tx, py)
+            ]
             if not blocking:
                 continue
             all_blocks += 1
@@ -1782,7 +1933,9 @@ def _draw_vertical_avoiding(
     gap = max(abs(_OBSTACLE_CLEARANCE), 6.0)
 
     # Collect obstacles that block the vertical trunk segment
-    blocking = [o for o in obstacles if o.segment_hits(x, y_min, x, y_max)]
+    blocking = [
+        o for o in obstacles if _segment_blocks_obstacle(o, x, y_min, x, y_max)
+    ]
     if not blocking:
         canvas.line(
             x,
@@ -1897,7 +2050,9 @@ def _draw_horizontal_stub(
         return (trunk_x, py)
 
     # Find the blocking obstacle and route around it
-    blocking = [o for o in obstacles if o.segment_hits(px, py, trunk_x, py)]
+    blocking = [
+        o for o in obstacles if _segment_blocks_obstacle(o, px, py, trunk_x, py)
+    ]
     if not blocking:
         canvas.line(
             px, py, trunk_x, py,
@@ -1905,25 +2060,12 @@ def _draw_horizontal_stub(
         )
         return (trunk_x, py)
 
-    # Special case: endpoint lies in obstacle clearance and the requested
-    # segment exits that clearance outward. In this constrained-pin case we
-    # prefer a direct horizontal branch to avoid local loop-like backtracking.
-    def _moves_outward_from_obs(obs: object) -> bool:
-        x0 = float(getattr(obs, "x0"))
-        x1 = float(getattr(obs, "x1"))
-        if x0 <= trunk_x <= x1:
-            return False
-        moving_left = trunk_x < px
-        dist_left = abs(px - x0)
-        dist_right = abs(x1 - px)
-        if moving_left:
-            return dist_left <= dist_right + 0.5
-        return dist_right <= dist_left + 0.5
-
+    # A direct escape is valid only under the same owner-aware rule used by
+    # every other wire path.  In particular, a pin from another component
+    # inside this obstacle must not turn a route through the obstacle legal.
     if (
         all(isinstance(obs, _Obstacle) for obs in blocking)
-        and all(_obstacle_contains_point(obs, px, py) for obs in blocking)
-        and all(_moves_outward_from_obs(obs) for obs in blocking)
+        and all(_can_exit_obstacle(obs, (px, py), (trunk_x, py)) for obs in blocking)
     ):
         canvas.line(
             px, py, trunk_x, py,
@@ -1954,7 +2096,13 @@ def _draw_horizontal_stub(
     detour_candidates = [detour_y_top, detour_y_bot]
     if trunk_y_span is not None:
         trunk_y_min, trunk_y_max = trunk_y_span
-        detour_candidates.extend([trunk_y_min, trunk_y_max])
+        # Do not re-introduce the original blocked horizontal line as a
+        # "detour" candidate when the trunk span is exactly this pin's y.
+        detour_candidates.extend(
+            candidate
+            for candidate in (trunk_y_min, trunk_y_max)
+            if abs(candidate - py) > 0.5
+        )
     deduped_candidates = list(dict.fromkeys(detour_candidates))
     dy = min(
         deduped_candidates,
@@ -2071,10 +2219,10 @@ def _draw_manhattan_wire(
     blocking: list[_Obstacle] = []
     for obstacle in obstacles:
         if (
-            obstacle.segment_hits(x0, y0, x1, y0)
-            or obstacle.segment_hits(x1, y0, x1, y1)
-            or obstacle.segment_hits(x0, y0, x0, y1)
-            or obstacle.segment_hits(x0, y1, x1, y1)
+            _segment_blocks_obstacle(obstacle, x0, y0, x1, y0)
+            or _segment_blocks_obstacle(obstacle, x1, y0, x1, y1)
+            or _segment_blocks_obstacle(obstacle, x0, y0, x0, y1)
+            or _segment_blocks_obstacle(obstacle, x0, y1, x1, y1)
         ):
             blocking.append(obstacle)
 
@@ -2195,15 +2343,9 @@ def _draw_segment_avoiding(
     blocking = [
         obstacle
         for obstacle in obstacles
-        if obstacle.segment_hits(x0, y0, x1, y1)
-        and not (
-            _obstacle_contains_point(obstacle, x0, y0)
-            and _moves_outward_from_obstacle(obstacle, (x0, y0), (x1, y1))
-        )
-        and not (
-            _obstacle_contains_point(obstacle, x1, y1)
-            and _moves_outward_from_obstacle(obstacle, (x1, y1), (x0, y0))
-        )
+        if _segment_blocks_obstacle(obstacle, x0, y0, x1, y1)
+        and not _can_exit_obstacle(obstacle, (x0, y0), (x1, y1))
+        and not _can_exit_obstacle(obstacle, (x1, y1), (x0, y0))
     ]
     if not blocking:
         canvas.line(
