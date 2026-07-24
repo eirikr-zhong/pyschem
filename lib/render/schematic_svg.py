@@ -597,6 +597,7 @@ def render_schematic_svg(
     Returns:
         Complete SVG document as a string.
     """
+    from lib.core.net import NC
     from lib.core.page import PageConfig as _PageConfig
 
     # Resolve template → style sub-objects
@@ -645,7 +646,7 @@ def render_schematic_svg(
         canvas_w = tmpl.page.width
         canvas_h = tmpl.page.height
     elif width or height:
-        parts = schematic.parts
+        parts = [part for part in schematic.parts if not isinstance(part, NC)]
         n = max(len(parts), 1)
         canvas_w = width or (_MARGIN * 2 + n * _COL_WIDTH)
         canvas_h = height or (_MARGIN * 2 + _ROW_HEIGHT)
@@ -683,6 +684,8 @@ def render_schematic_svg(
     from lib.core.part import NetLabel
 
     parts = schematic.parts
+    nc_markers = [part for part in parts if isinstance(part, NC)]
+    parts = [part for part in parts if not isinstance(part, NC)]
     resolved_part_styles: dict[str, Style] = {}
     for idx, part in enumerate(parts):
         ref = part.ref or f"_part{idx}"
@@ -966,6 +969,25 @@ def render_schematic_svg(
             debug_trunks=debug_trunks if debug else None,
         )
 
+    # Draw intentional no-connect markers on top of symbols and wires.  An NC
+    # marker does not own a pin, so its target endpoint was collected from the
+    # marked component in Phase 2.
+    nc_stroke = _style_value(pin_style.stub_stroke, field_name="pin.stub_stroke")
+    nc_width = _style_value(
+        pin_style.stub_stroke_width,
+        field_name="pin.stub_stroke_width",
+    )
+    for marker in nc_markers:
+        target = marker.target_pin
+        target_point = pin_endpoints.get((target.part_ref, target.key))
+        if target_point is not None:
+            _draw_no_connect_marker(
+                canvas,
+                *target_point,
+                stroke=nc_stroke,
+                stroke_width=nc_width,
+            )
+
     # Draw explicit Junction components as fixed tee dots.
     for jx, jy in sorted(junction_points):
         canvas.circle(
@@ -1062,6 +1084,23 @@ def _draw_debug_overlays(
 # ---------------------------------------------------------------------------
 # Layout helpers
 # ---------------------------------------------------------------------------
+
+def _draw_no_connect_marker(
+    canvas: "_TrackingCanvas",
+    x: float,
+    y: float,
+    *,
+    stroke: str,
+    stroke_width: float,
+) -> None:
+    """Draw the X used to mark an intentionally unconnected pin."""
+    half_size = 5.0
+    canvas._elements.append('<g class="no-connect">')
+    canvas.line(x - half_size, y - half_size, x + half_size, y + half_size,
+                stroke=stroke, stroke_width=stroke_width)
+    canvas.line(x - half_size, y + half_size, x + half_size, y - half_size,
+                stroke=stroke, stroke_width=stroke_width)
+    canvas._elements.append("</g>")
 
 def _netlabel_rotation(direction: str | None, *, fallback: int = 0) -> int:
     """Return clockwise rotation mapped from NetLabel direction."""

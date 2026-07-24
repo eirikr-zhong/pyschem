@@ -33,7 +33,7 @@ A two-transistor RTL AND gate:
 
 ```python
 from pyschem import (
-    Part, Junction, NetLabel, GroundNet, Schematic, Style,
+    Part, Junction, NetLabel, GroundNet, NC, Schematic, Style,
     RenderTemplate, WireStyle, connect, configure_default_symbols,
 )
 from pathlib import Path
@@ -58,12 +58,14 @@ vcc_q1 = NetLabel("VCC",     direction="top")
 vcc_q2 = NetLabel("VCC",     direction="top")
 gnd_l  = GroundNet()
 gnd_r  = GroundNet()
+nc_q2e = NC(q2.pin("E"))  # Explicitly mark an intentionally floating pin.
 
 sch.place(r1, x=20, y=25)
 sch.place(r2, x=20, y=75)
 sch.place(q1, x=65, y=50)
 sch.place(q2, x=155, y=50)
 # ... (place remaining parts and labels)
+sch.add_part(nc_q2e)
 
 # PySchem supports two equivalent connection styles:
 #   pin.connect(other)         — concise two-pin form

@@ -2,7 +2,7 @@
 
 from lib.core.connect import connect, derive_nets
 from lib.core.junction import Junction
-from lib.core.net import GroundNet, Net, NetLabel
+from lib.core.net import GroundNet, NC, Net, NetLabel
 from lib.core.page import PageConfig
 from lib.core.part import Part, Pin
 from lib.core.render_style import (
@@ -28,6 +28,7 @@ __all__ = [
     "Net",
     "NetLabel",
     "GroundNet",
+    "NC",
     "Junction",
     "Style",
     "DefaultPlacementStyle",

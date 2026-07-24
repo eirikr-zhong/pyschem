@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Optional
 
 from lib.core.connect import connect as _connect_pins, derive_nets
-from lib.core.net import Net, NetLabel
+from lib.core.net import NC, Net, NetLabel
 from lib.core.page import PageConfig
 from lib.core.part import Part, Pin
 from lib.core.style import Style
@@ -97,6 +97,19 @@ class Schematic:
             for pin in part.pins.values():
                 pin_to_part[id(pin)] = part
                 all_pins.append(pin)
+
+        for marker in (part for part in self._parts if isinstance(part, NC)):
+            target = marker.target_pin
+            owner = pin_to_part.get(id(target))
+            if owner is None:
+                errors.append(
+                    f"ERC: NC marker '{marker.ref}' targets a pin outside this schematic"
+                )
+            elif target.is_connected:
+                errors.append(
+                    f"ERC: NC marker '{marker.ref}' targets connected pin "
+                    f"{target.part_ref}.{target.key}"
+                )
 
         visited: set[int] = set()
         for pin in all_pins:
@@ -178,7 +191,7 @@ class Schematic:
         lines: list[str] = [f'graph "{self.name}" {{', "  rankdir=LR;"]
 
         for part in self._parts:
-            if isinstance(part, NetLabel):
+            if isinstance(part, (NetLabel, NC)):
                 continue
             ref = part.ref or "?"
             value = part.value or ""
