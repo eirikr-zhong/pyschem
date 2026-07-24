@@ -48,6 +48,7 @@ from lib.core.style import Style
 from lib.render.schematic_svg import (
     _Obstacle,
     _any_obstacle_hit,
+    _can_draw_straight,
     _component_obstacle,
     _OBSTACLE_CLEARANCE,
     _box_height,
@@ -55,7 +56,7 @@ from lib.render.schematic_svg import (
 )
 from lib.core.page import PageConfig
 from lib.core.schematic import Schematic
-from lib.symbols.data import PinDefinition, SymbolData
+from lib.symbols.data import PinDefinition, SymbolData, SymbolPrimitive
 
 
 # ---------------------------------------------------------------------------
@@ -71,6 +72,54 @@ def _pnp_symbol_data() -> SymbolData:
             PinDefinition(number="2", name="B", type="input",   x=0, y=0),
             PinDefinition(number="3", name="E", type="passive", x=0, y=0),
         ],
+    )
+
+
+def _device_l_symbol_data() -> SymbolData:
+    """KiCad Device:L geometry, scaled as the symbol parser produces it."""
+    scale = 6.0
+    return SymbolData(
+        name="L",
+        lib="Device",
+        primitives=[
+            SymbolPrimitive(
+                "arc",
+                [(0, 2.54 * scale), (0.6323 * scale, 1.905 * scale), (0, 1.27 * scale)],
+            ),
+            SymbolPrimitive(
+                "arc",
+                [(0, 1.27 * scale), (0.6323 * scale, 0.635 * scale), (0, 0)],
+            ),
+            SymbolPrimitive(
+                "arc",
+                [(0, 0), (0.6323 * scale, -0.635 * scale), (0, -1.27 * scale)],
+            ),
+            SymbolPrimitive(
+                "arc",
+                [
+                    (0, -1.27 * scale),
+                    (0.6323 * scale, -1.905 * scale),
+                    (0, -2.54 * scale),
+                ],
+            ),
+        ],
+        pins=[
+            PinDefinition(
+                "1", "1", "passive", 0, 3.81 * scale, orientation=270, length=1.27 * scale
+            ),
+            PinDefinition(
+                "2", "2", "passive", 0, -3.81 * scale, orientation=90, length=1.27 * scale
+            ),
+        ],
+    )
+
+
+def _single_pin_probe_data() -> SymbolData:
+    """A pin-only symbol used to position a same-net endpoint precisely."""
+    return SymbolData(
+        name="Probe",
+        lib="Test",
+        pins=[PinDefinition("1", "1", "passive", 0, 0)],
     )
 
 
@@ -466,6 +515,125 @@ class TestObstacleUnit:
         obs = _Obstacle(50, 50, 130, 90, clearance=0)
         # Segment at y=70 crosses the box
         assert _any_obstacle_hit([obs], 0, 70, 200, 70)
+
+    def test_foreign_endpoint_cannot_escape_component_obstacle(self):
+        """OBS-08c: only the obstacle owner's pin may use an interior escape."""
+        obs = _Obstacle(-10, -1, 10, 1, clearance=0, component_ref="L1")
+        obs.pin_endpoints.add((8.0, 0.0))
+
+        # This point is near the same edge but belongs to another component.
+        assert not _can_draw_straight((7.0, 0.0), (20.0, 0.0), [obs])
+        # L1's own pin can still leave the obstacle toward the outside.
+        assert _can_draw_straight((8.0, 0.0), (20.0, 0.0), [obs])
+
+
+class TestRotatedDeviceLRouting:
+    """Regression coverage for KiCad Device:L obstacle routing."""
+
+    @staticmethod
+    def _wire_segments(svg: str) -> list[tuple[float, float, float, float]]:
+        return [
+            (float(x1), float(y1), float(x2), float(y2))
+            for x1, y1, x2, y2 in re.findall(
+                r'<line x1="([^"]+)" y1="([^"]+)" x2="([^"]+)" y2="([^"]+)"'
+                r'[^>]*stroke="#1565c0"',
+                svg,
+            )
+        ]
+
+    @pytest.mark.parametrize("rotation", [0, 90, 180, 270])
+    def test_same_net_pin_inside_rotated_l_aabb_routes_around_coil(self, rotation: int):
+        """A foreign same-net pin inside L1's AABB must not bridge its coil."""
+        from lib.render.schematic_svg import _MARGIN
+        from lib.render.symbol_renderer import SymbolRenderer
+
+        sch = Schematic(f"device_l_rotated_{rotation}")
+        l1 = Part("Device:L", ref="L1", value="4.7uH")
+        near = Part("Test:Probe", ref="X1")
+        far = Part("Test:Probe", ref="X2")
+        l1.attach_symbol(_device_l_symbol_data())
+        near.attach_symbol(_single_pin_probe_data())
+        far.attach_symbol(_single_pin_probe_data())
+        l1.pin("1")
+        l1.pin("2")
+        near.pin("1")
+        far.pin("1")
+
+        style_x, style_y = 100.0, 100.0
+        scale = 3.0  # Explicit schematic coordinates map to SVG pixels at 3x.
+        cx = _MARGIN + style_x * scale
+        cy = _MARGIN + style_y * scale
+        renderer = SymbolRenderer()
+        l1_pins = renderer.pin_endpoints(
+            l1, cx, cy, symbol_name="L", rotation=rotation
+        )
+        l1_pin_1 = l1_pins[("L1", "1")]
+        l1_pin_2 = l1_pins[("L1", "2")]
+
+        # The probe sits at L1's centre: within its conservative AABB but
+        # geometrically distinct from L1's outer electrical endpoint.
+        near_world = (cx, cy)
+        far_world = (
+            l1_pin_1[0] + (l1_pin_1[0] - cx),
+            l1_pin_1[1] + (l1_pin_1[1] - cy),
+        )
+        sch.place(l1, x=style_x, y=style_y, rotation=rotation)
+        sch.place(
+            near,
+            x=(near_world[0] - _MARGIN) / scale,
+            y=(near_world[1] - _MARGIN) / scale,
+        )
+        sch.place(
+            far,
+            x=(far_world[0] - _MARGIN) / scale,
+            y=(far_world[1] - _MARGIN) / scale,
+        )
+        connect(l1.pin("1"), near.pin("1"), far.pin("1"))
+
+        full_bbox = renderer.component_bbox(
+            l1, cx, cy, symbol_name="L", rotation=rotation
+        )
+        assert full_bbox is not None
+        assert full_bbox[0] <= near_world[0] <= full_bbox[2]
+        assert full_bbox[1] <= near_world[1] <= full_bbox[3]
+
+        # Use the KiCad primitive-only bounds for the actual visible coil;
+        # the router's obstacle itself also includes the external pin stubs.
+        body_local = [
+            (0.0, -15.24),
+            (3.7938, -15.24),
+            (3.7938, 15.24),
+            (0.0, 15.24),
+        ]
+        body_world = [
+            renderer._to_world_point(x, y, cx, cy, rotation)
+            for x, y in body_local
+        ]
+        body_obstacle = _Obstacle(
+            min(x for x, _ in body_world),
+            min(y for _, y in body_world),
+            max(x for x, _ in body_world),
+            max(y for _, y in body_world),
+            clearance=0,
+        )
+
+        wire_segments = self._wire_segments(sch.get_svg_string())
+        assert wire_segments
+        assert any(
+            (abs(x1 - l1_pin_1[0]) < 0.5 and abs(y1 - l1_pin_1[1]) < 0.5)
+            or (abs(x2 - l1_pin_1[0]) < 0.5 and abs(y2 - l1_pin_1[1]) < 0.5)
+            for x1, y1, x2, y2 in wire_segments
+        )
+        assert not any(
+            (abs(x1 - l1_pin_2[0]) < 0.5 and abs(y1 - l1_pin_2[1]) < 0.5)
+            or (abs(x2 - l1_pin_2[0]) < 0.5 and abs(y2 - l1_pin_2[1]) < 0.5)
+            for x1, y1, x2, y2 in wire_segments
+        )
+        assert not [
+            segment
+            for segment in wire_segments
+            if body_obstacle.segment_blocks(*segment)
+        ], f"Wire segments cross Device:L body at {rotation} degrees: {wire_segments}"
 
 
 class TestObstacleAvoidanceIntegration:
