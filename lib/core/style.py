@@ -1,5 +1,6 @@
 """Unified schematic Style dataclass (placement + rendering controls)."""
 
+import math
 from dataclasses import dataclass
 from typing import Optional
 
@@ -18,6 +19,7 @@ class Style(RenderStyle):
     - x, y: absolute coordinates in mm
     - anchor: anchor point (center/left/right/top/bottom)
     - rotation: rotation angle (0/90/180/270)
+    - scale: component geometry scale factor (must be positive)
     - locked: whether position is fixed
     - z_index: z-order
 
@@ -29,6 +31,7 @@ class Style(RenderStyle):
     y: Optional[float] = None
     anchor: str = "center"
     rotation: int = 0
+    scale: float = 1.0
     locked: bool = False
     z_index: int = 0
 
@@ -42,6 +45,17 @@ class Style(RenderStyle):
         if self.rotation not in VALID_ROTATIONS:
             raise StyleValidationError(
                 f"rotation must be one of {sorted(VALID_ROTATIONS)}, got {self.rotation}"
+            )
+
+        # Validate component scale
+        if (
+            not isinstance(self.scale, (int, float))
+            or isinstance(self.scale, bool)
+            or not math.isfinite(self.scale)
+            or self.scale <= 0
+        ):
+            raise StyleValidationError(
+                f"scale must be a finite positive number, got {self.scale!r}"
             )
 
         # Validate anchor
@@ -87,6 +101,7 @@ def DefaultPlacementStyle() -> Style:
         y=None,
         anchor="center",
         rotation=0,
+        scale=1.0,
         locked=False,
         z_index=0,
     )

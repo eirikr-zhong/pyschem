@@ -91,6 +91,7 @@ class SymbolRenderer:
         *,
         symbol_name: str,
         rotation: int = 0,
+        scale: float = 1.0,
         font_ref: float = 14,
         font_value: float = 11,
         font_pin: float = 10,
@@ -102,9 +103,32 @@ class SymbolRenderer:
         if not symbol.primitives and not symbol.pins:
             return False
 
+        # Tracking canvases cannot infer a <g> transform.  Register the final
+        # world-space geometry so fit-to-content also covers scaled symbols.
+        track = getattr(canvas, "_track", None)
+        if callable(track):
+            world_bbox = self.component_bbox(
+                part,
+                cx,
+                cy,
+                symbol_name=symbol_name,
+                rotation=rotation,
+                scale=scale,
+            )
+            if world_bbox is not None:
+                x0, y0, x1, y1 = world_bbox
+                track(x0, y0)
+                track(x1, y1)
+
         rotation_norm = rotation % 360
-        if rotation_norm:
-            canvas.group_start(f"rotate({-rotation},{cx:.3f},{cy:.3f})")
+        if rotation_norm or scale != 1.0:
+            transforms = [f"translate({cx:.3f},{cy:.3f})"]
+            if rotation_norm:
+                transforms.append(f"rotate({-rotation})")
+            if scale != 1.0:
+                transforms.append(f"scale({scale:.6g})")
+            transforms.append(f"translate({-cx:.3f},{-cy:.3f})")
+            canvas.group_start(" ".join(transforms))
 
         for primitive in symbol.primitives:
             self._draw_primitive(canvas, primitive, cx, cy)
@@ -116,7 +140,7 @@ class SymbolRenderer:
         ref = part.ref or ""
         value = part.value or ""
 
-        if rotation_norm:
+        if rotation_norm or scale != 1.0:
             canvas.group_end()
 
         if ref and self.text_visible(self._style.ref_text, TextPlacementStyle.default_ref()):
@@ -127,12 +151,13 @@ class SymbolRenderer:
                 placement=self._style.ref_text,
                 default_placement=TextPlacementStyle.default_ref(),
                 rotation=rotation,
+                scale=scale,
             )
             canvas.text(
                 ref_x,
                 ref_y,
                 ref,
-                font_size=font_ref,
+                font_size=font_ref * scale,
                 anchor=ref_anchor,
                 dominant_baseline="middle",
             )
@@ -144,12 +169,13 @@ class SymbolRenderer:
                 placement=self._style.value_text,
                 default_placement=TextPlacementStyle.default_value(),
                 rotation=rotation,
+                scale=scale,
             )
             canvas.text(
                 value_x,
                 value_y,
                 value,
-                font_size=font_value,
+                font_size=font_value * scale,
                 fill=self._style.value_text_fill,
                 anchor=value_anchor,
                 dominant_baseline="middle",
@@ -165,6 +191,7 @@ class SymbolRenderer:
         *,
         symbol_name: str,
         rotation: int = 0,
+        scale: float = 1.0,
     ) -> dict[tuple[str, str], tuple[float, float]]:
         """Return wire-connection endpoints for existing ``part.pins`` keys."""
         symbol = self._resolve_symbol_data(part, symbol_name)
@@ -192,7 +219,7 @@ class SymbolRenderer:
             if pin_key not in endpoint_by_alias:
                 continue
             lx, ly = endpoint_by_alias[pin_key]
-            wx, wy = self._to_world_point(lx, ly, cx, cy, rotation)
+            wx, wy = self._to_world_point(lx, ly, cx, cy, rotation, scale=scale)
             result[(ref, pin_key)] = (wx, wy)
             # Also emit the complementary key (number↔name) so callers
             # can look up by either identifier.
@@ -214,6 +241,7 @@ class SymbolRenderer:
         *,
         symbol_name: str,
         rotation: int = 0,
+        scale: float = 1.0,
     ) -> tuple[float, float, float, float] | None:
         """Return world-space AABB of the symbol body for obstacle routing."""
         symbol = self._resolve_symbol_data(part, symbol_name)
@@ -226,7 +254,10 @@ class SymbolRenderer:
 
         x0, y0, x1, y1 = raw
         corners = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
-        world = [self._to_world_point(x, y, cx, cy, rotation) for x, y in corners]
+        world = [
+            self._to_world_point(x, y, cx, cy, rotation, scale=scale)
+            for x, y in corners
+        ]
         xs = [p[0] for p in world]
         ys = [p[1] for p in world]
         return (min(xs), min(ys), max(xs), max(ys))
@@ -447,6 +478,7 @@ class SymbolRenderer:
         placement: TextPlacementStyle,
         default_placement: TextPlacementStyle,
         rotation: int = 0,
+        scale: float = 1.0,
     ) -> tuple[float, float, str]:
         """Return world-space ``(x, y, anchor)`` for a text placement style."""
         fallback_position = cls._normalized_position(default_placement.position, fallback="right")
@@ -458,9 +490,9 @@ class SymbolRenderer:
 
         position = cls._normalized_position(placement.position, fallback=fallback_position)
         mode = cls._normalized_rotation_mode(placement.rotation_mode, fallback=fallback_mode)
-        offset = cls._resolved_offset(placement.offset, fallback=fallback_offset)
+        offset = cls._resolved_offset(placement.offset, fallback=fallback_offset) * scale
 
-        x0, y0, x1, y1 = bbox
+        x0, y0, x1, y1 = (value * scale for value in bbox)
         mid_x = (x0 + x1) / 2.0
         mid_y = (y0 + y1) / 2.0
         if position == "top":
@@ -560,7 +592,11 @@ class SymbolRenderer:
         cx: float,
         cy: float,
         rotation: int,
+        *,
+        scale: float = 1.0,
     ) -> tuple[float, float]:
+        lx *= scale
+        ly *= scale
         if rotation % 360 == 0:
             return (cx + lx, cy + ly)
         rad = math.radians(-rotation)

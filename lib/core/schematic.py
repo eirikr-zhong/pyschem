@@ -182,6 +182,7 @@ class Schematic:
         y: float,
         anchor: str = "center",
         rotation: int = 0,
+        scale: float = 1.0,
         locked: bool = True,
         style: "Style | None" = None,
     ) -> None:
@@ -190,7 +191,7 @@ class Schematic:
         # Preserve existing per-part render settings (for example Junction/NetLabel
         # ref-text visibility defaults) while applying placement parameters.
         base_style = part.get_style().merge(
-            Style(x=x, y=y, anchor=anchor, rotation=rotation, locked=locked)
+            Style(x=x, y=y, anchor=anchor, rotation=rotation, scale=scale, locked=locked)
         )
         if style is not None:
             base_style = base_style.merge(style)

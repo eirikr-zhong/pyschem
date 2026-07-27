@@ -748,6 +748,7 @@ def render_schematic_svg(
             symbol_renderer=part_renderer,
             box_style=part_style.box or _default_box_style(),
             rotation=part_style.rotation,
+            scale=part_style.scale,
         )
         obstacles.append(obs)
         if part.ref:
@@ -774,6 +775,7 @@ def render_schematic_svg(
             box_style=part_style.box or _default_box_style(),
             pin_style=part_style.pin or _default_pin_style(),
             rotation=part_style.rotation,
+            scale=part_style.scale,
         )
         pin_endpoints.update(ep)
 
@@ -888,6 +890,7 @@ def render_schematic_svg(
         lib_id = part.lib_id or ""
         symbol_name = lib_id.split(":")[-1] if ":" in lib_id else lib_id
         rotation = part_style.rotation
+        scale = part_style.scale
         part_font_ref = _style_value(
             part_pin_style.font_ref if part_pin_style.font_ref is not None else part_style.ref_font_size,
             field_name="ref_font_size",
@@ -923,6 +926,7 @@ def render_schematic_svg(
             cy,
             symbol_name=symbol_name,
             rotation=rotation,
+            scale=scale,
             font_ref=part_font_ref,
             font_value=part_font_value,
             font_pin=part_font_pin,
@@ -934,6 +938,7 @@ def render_schematic_svg(
                 cx,
                 cy,
                 rotation=rotation,
+                scale=scale,
                 font_ref=part_font_ref,
                 font_value=part_font_value,
                 box_width=_style_value(part_box_style.width, field_name="box.width"),
@@ -1197,6 +1202,7 @@ def _component_obstacle(
     symbol_renderer: SymbolRenderer | None = None,
     box_style: BoxStyle | None = None,
     rotation: int = 0,
+    scale: float = 1.0,
 ) -> _Obstacle:
     """Return the routing obstacle (expanded AABB) for a component."""
     renderer = symbol_renderer or SymbolRenderer()
@@ -1206,6 +1212,7 @@ def _component_obstacle(
         cy,
         symbol_name=symbol_name,
         rotation=rotation,
+        scale=scale,
     )
     component_ref = part.ref or None
     if bbox is not None:
@@ -1221,6 +1228,8 @@ def _component_obstacle(
         box_pin_row_height=resolved_box.pin_row_height,
     )
     w = _style_value(resolved_box.width, field_name="box.width")
+    h *= scale
+    w *= scale
     x0, y0 = cx - w / 2, cy - h / 2
     return _Obstacle(x0, y0, x0 + w, y0 + h, component_ref=component_ref)
 
@@ -1239,6 +1248,7 @@ def _compute_pin_endpoints(
     box_style: BoxStyle | None = None,
     pin_style: PinStyle | None = None,
     rotation: int = 0,
+    scale: float = 1.0,
 ) -> dict[tuple[str, str], tuple[float, float]]:
     """Return {(part_ref, pin_key): (px, py)} for all pins of *part*."""
     from lib.core.junction import Junction
@@ -1256,6 +1266,7 @@ def _compute_pin_endpoints(
         cy,
         symbol_name=symbol_name,
         rotation=rotation,
+        scale=scale,
     )
     if endpoints:
         return endpoints
@@ -1268,6 +1279,7 @@ def _compute_pin_endpoints(
         cy,
         box_style=box_style,
         pin_style=pin_style,
+        scale=scale,
     )
 
 
@@ -1278,6 +1290,7 @@ def _generic_box_pin_endpoints(
     *,
     box_style: BoxStyle | None = None,
     pin_style: PinStyle | None = None,
+    scale: float = 1.0,
 ) -> dict[tuple[str, str], tuple[float, float]]:
     """Pin endpoints for unresolved-symbol placeholder geometry."""
     resolved_box = box_style or _default_box_style()
@@ -1289,8 +1302,9 @@ def _generic_box_pin_endpoints(
         box_min_height=resolved_box.min_height,
         box_pin_row_height=resolved_box.pin_row_height,
     )
-    w = _style_value(resolved_box.width, field_name="box.width")
-    stub_len = _style_value(resolved_pin.stub_length, field_name="pin.stub_length")
+    h *= scale
+    w = _style_value(resolved_box.width, field_name="box.width") * scale
+    stub_len = _style_value(resolved_pin.stub_length, field_name="pin.stub_length") * scale
     x0, y0 = cx - w / 2, cy - h / 2
     result: dict[tuple[str, str], tuple[float, float]] = {}
 
@@ -2506,6 +2520,7 @@ def _render_missing_symbol_placeholder(
     cy: float,
     *,
     rotation: int = 0,
+    scale: float = 1.0,
     font_ref: float | None = None,
     font_value: float | None = None,
     box_width: float | None = None,
@@ -2564,12 +2579,14 @@ def _render_missing_symbol_placeholder(
         else value_text_fill
     )
 
-    h = _box_height(
+    base_h = _box_height(
         len(list(part.pins.items())),
         box_min_height=box_min_height,
         box_pin_row_height=box_pin_row_height,
     )
-    w = box_width
+    base_w = box_width
+    h = base_h * scale
+    w = base_w * scale
     x0, y0 = cx - w / 2, cy - h / 2
     x1, y1 = x0 + w, y0 + h
 
@@ -2619,13 +2636,13 @@ def _render_missing_symbol_placeholder(
         cx,
         cy,
         missing_label,
-        font_size=max(10.0, font_ref * 0.7),
+        font_size=max(10.0, font_ref * 0.7) * scale,
         fill=placeholder_color,
         anchor="middle",
         dominant_baseline="middle",
     )
 
-    local_bbox = (-w / 2, -h / 2, w / 2, h / 2)
+    local_bbox = (-base_w / 2, -base_h / 2, base_w / 2, base_h / 2)
     ref_text = part.ref or ""
     value_text = part.value or ""
 
@@ -2637,12 +2654,13 @@ def _render_missing_symbol_placeholder(
             placement=ref_text_style,
             default_placement=TextPlacementStyle.default_ref(),
             rotation=rotation,
+            scale=scale,
         )
         canvas.text(
             ref_x,
             ref_y,
             ref_text,
-            font_size=font_ref,
+            font_size=font_ref * scale,
             anchor=ref_anchor,
             dominant_baseline="middle",
         )
@@ -2655,12 +2673,13 @@ def _render_missing_symbol_placeholder(
             placement=value_text_style,
             default_placement=TextPlacementStyle.default_value(),
             rotation=rotation,
+            scale=scale,
         )
         canvas.text(
             value_x,
             value_y,
             value_text,
-            font_size=font_value,
+            font_size=font_value * scale,
             fill=value_text_fill,
             anchor=value_anchor,
             dominant_baseline="middle",
