@@ -13,8 +13,10 @@ custom dimensions::
     sch.export_svg("out.svg", page=PageConfig(width=1920, height=1080))
 """
 
+import csv
 from dataclasses import dataclass, field
 from pathlib import Path
+import re
 from typing import Optional
 
 from lib.core.connect import connect as _connect_pins, derive_nets
@@ -27,6 +29,17 @@ from lib.errors import RenderPathError
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from lib.core.render_style import RenderTemplate
+
+
+_BOM_BASE_COLUMNS = ("References", "Quantity", "Value", "Footprint", "Lib ID")
+
+
+def _natural_reference_key(ref: str) -> tuple[tuple[int, object], ...]:
+    """Return a stable natural-sort key for a reference designator."""
+    return tuple(
+        (0, int(fragment)) if fragment.isdigit() else (1, fragment.casefold())
+        for fragment in re.split(r"(\d+)", ref)
+    )
 
 
 @dataclass
@@ -273,6 +286,67 @@ class Schematic:
 
     def export_dot(self, path: str) -> None:
         self.render(path, fmt="dot")
+
+    def export_bom(self, path: str) -> None:
+        """Write a grouped bill of materials as a UTF-8 CSV file.
+
+        Physical parts with the same value, footprint, library ID, and BOM
+        fields are grouped into one row. Net labels and annotation markers are
+        excluded because they are not purchasable components.
+        """
+        from lib.core.junction import Junction
+
+        purchasable_parts = [
+            part
+            for part in self._parts
+            if not isinstance(part, (NetLabel, Junction))
+            and part.lib_id != "Annotation:NoConnect"
+        ]
+        custom_columns = sorted(
+            {field_name for part in purchasable_parts for field_name in part.bom_fields}
+        )
+        grouped: dict[
+            tuple[str, str, str, tuple[tuple[str, str], ...]], list[Part]
+        ] = {}
+        for part in purchasable_parts:
+            fields = tuple(
+                (field_name, part.bom_fields.get(field_name, ""))
+                for field_name in custom_columns
+            )
+            key = (
+                part.value or "",
+                part.footprint or "",
+                part.lib_id,
+                fields,
+            )
+            grouped.setdefault(key, []).append(part)
+
+        rows: list[dict[str, str]] = []
+        for parts in grouped.values():
+            sorted_parts = sorted(parts, key=lambda part: _natural_reference_key(part.ref or ""))
+            first_part = sorted_parts[0]
+            row = {
+                "References": ",".join(part.ref or "" for part in sorted_parts),
+                "Quantity": str(len(sorted_parts)),
+                "Value": first_part.value or "",
+                "Footprint": first_part.footprint or "",
+                "Lib ID": first_part.lib_id,
+            }
+            row.update({column: first_part.bom_fields.get(column, "") for column in custom_columns})
+            rows.append(row)
+
+        rows.sort(key=lambda row: _natural_reference_key(row["References"].split(",", 1)[0]))
+        fieldnames = [*_BOM_BASE_COLUMNS, *custom_columns]
+
+        out = Path(path).expanduser()
+        try:
+            out.parent.mkdir(parents=True, exist_ok=True)
+            with out.open("w", encoding="utf-8-sig", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(rows)
+        except OSError as exc:
+            raise RenderPathError(f"cannot create/write output path: {path}") from exc
 
     def export_svg(
         self,

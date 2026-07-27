@@ -85,6 +85,27 @@ See [`examples/transistor_and_gate_svg.py`](examples/transistor_and_gate_svg.py)
 
 ---
 
+## BOM Export
+
+Add purchasing metadata to physical parts with `bom_fields`, then export a
+grouped UTF-8 CSV BOM for spreadsheet tools:
+
+```python
+r1 = Part(
+    "Device:R",
+    ref="R1",
+    value="10k",
+    footprint="Resistor_SMD:R_0603_1608Metric",
+    bom_fields={"Manufacturer": "Yageo", "MPN": "RC0603FR-0710KL"},
+)
+sch.export_bom("out/bom.csv")
+```
+
+Parts with the same value, footprint, library ID, and purchasing fields are
+combined into one row with a quantity and comma-separated reference list.
+
+---
+
 ## Installation
 
 ```bash
