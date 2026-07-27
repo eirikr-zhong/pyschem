@@ -5,6 +5,7 @@ vNext architecture: connections are driven by Pin.connect().
 
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Optional, Union, cast
 
@@ -141,6 +142,37 @@ class Part:
         """Bind a SymbolData to this part, enabling pin-name resolution and validation."""
         self._symbol_data = symbol_data
 
+    def clone(self, *, ref: Optional[str] = None) -> "Part":
+        """Create a disconnected copy of this physical component instance.
+
+        The clone shares the immutable symbol definition, but owns independent
+        style, BOM metadata, and :class:`Pin` objects.  Pins which have already
+        been accessed on this part are recreated on the clone; their electrical
+        connections are deliberately not copied.  ``ref`` may provide a new
+        reference designator, otherwise a fresh reference is generated.
+
+        This method returns a base :class:`Part` and is intended for ordinary
+        physical components.  Special schematic annotations with custom
+        constructors, such as ``NetLabel`` and ``GroundNet``, should be created
+        directly instead.
+        """
+        clone = Part(
+            lib_id=self.lib_id,
+            ref=ref,
+            value=self.value,
+            footprint=self.footprint,
+            bom_fields=deepcopy(self.bom_fields),
+        )
+        clone._symbol_data = self._symbol_data
+        clone._style = deepcopy(self._style)
+
+        # Recreate only materialized pins.  Calling pin() preserves canonical
+        # symbol pin numbering while ensuring the new pins have no connections.
+        for key in self._pins:
+            clone.pin(key)
+
+        return clone
+
     @property
     def available_pins(self) -> list[str]:
         """Return all pin numbers and names from the attached symbol (deduplicated)."""
@@ -232,14 +264,14 @@ def parse_pins(part: "Part", pin_spec: str) -> list[Pin]:
 if TYPE_CHECKING:
     # Backward-compatible typing re-export; runtime is resolved lazily to
     # avoid circular imports (lib.core.net imports Part/Pin from this module).
-    from lib.core.net import GroundNet, NC, NetLabel
+    from lib.core.net import GroundNet, NetLabel
 
 
 def __getattr__(name: str) -> object:
-    """Lazy compatibility re-export for special net annotations."""
-    if name in {"NetLabel", "GroundNet", "NC"}:
-        from lib.core.net import GroundNet, NC, NetLabel
+    """Lazy compatibility re-export for NetLabel/GroundNet."""
+    if name in {"NetLabel", "GroundNet"}:
+        from lib.core.net import GroundNet, NetLabel
 
-        exports = {"NetLabel": NetLabel, "GroundNet": GroundNet, "NC": NC}
+        exports = {"NetLabel": NetLabel, "GroundNet": GroundNet}
         return exports[name]
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -1,7 +1,10 @@
 """Unit tests for Part/Pin behavior in lib.core.part."""
 
+import re
+
 from lib.core.part import Part, Pin
 from lib.core.style import Style
+from lib.symbols.data import PinDefinition, SymbolData
 
 
 def test_part_auto_generates_ref_when_missing() -> None:
@@ -61,9 +64,6 @@ def test_get_style_returns_default_when_not_set() -> None:
     assert style.anchor == "center"
     assert style.rotation == 0
     assert style.locked is False
-
-
-import re
 
 
 def test_auto_ref_generation_increments() -> None:
@@ -160,3 +160,82 @@ def test_part_autobind_symbol_lookup_errors_are_suppressed(monkeypatch) -> None:
 
     assert part.ref == "R1"
     assert part.available_pins == []
+
+
+def test_part_clone_copies_component_metadata_with_new_ref() -> None:
+    source = Part(
+        "Device:R",
+        ref="R1",
+        value="10k",
+        footprint="Resistor_SMD:R_0603_1608Metric",
+        bom_fields={"Manufacturer": "Yageo", "MPN": "RC0603FR-0710KL"},
+    )
+
+    clone = source.clone(ref="R2")
+
+    assert clone is not source
+    assert clone.lib_id == "Device:R"
+    assert clone.ref == "R2"
+    assert clone.value == "10k"
+    assert clone.footprint == "Resistor_SMD:R_0603_1608Metric"
+    assert clone.bom_fields == source.bom_fields
+
+    clone.bom_fields["MPN"] = "RC0603FR-0722KL"
+    assert source.bom_fields["MPN"] == "RC0603FR-0710KL"
+
+
+def test_part_clone_generates_a_fresh_ref_by_default() -> None:
+    source = Part("Device:R", ref="R1")
+
+    clone = source.clone()
+
+    assert clone.ref is not None
+    assert clone.ref != source.ref
+    assert clone.ref.startswith("U")
+
+
+def test_part_clone_recreates_accessed_pins_without_connections() -> None:
+    source = Part("Device:R", ref="R1")
+    other = Part("Device:C", ref="C1")
+    source.pin("1").connect(other.pin("1"))
+    source.pin("2")
+
+    clone = source.clone(ref="R2")
+
+    assert set(clone.pins) == {"1", "2"}
+    assert clone.pin("1") is not source.pin("1")
+    assert clone.pin("1").part_ref == "R2"
+    assert clone.pin("1").connected_pins == []
+    assert clone.pin("2").connected_pins == []
+    assert source.pin("1").connected_pins == [other.pin("1")]
+
+
+def test_part_clone_preserves_symbol_pin_resolution_and_symbol_data() -> None:
+    symbol = SymbolData(
+        name="Q_NPN_BCE",
+        lib="Device",
+        pins=[PinDefinition(number="1", name="B", type="input", x=0, y=0)],
+    )
+    source = Part("Device:Q_NPN_BCE", ref="Q1")
+    source.attach_symbol(symbol)
+    source.pin("B")
+
+    clone = source.clone(ref="Q2")
+
+    assert clone._symbol_data is symbol
+    assert clone.pin("B").key == "1"
+    assert clone.pin("B").part_ref == "Q2"
+    assert clone.pin("B") is not source.pin("B")
+
+
+def test_part_clone_has_an_independent_style() -> None:
+    source = Part("Device:R", ref="R1")
+    source.set_style(Style(x=10, y=20, rotation=90, locked=True))
+
+    clone = source.clone(ref="R2")
+    clone_style = clone.get_style()
+
+    assert clone_style == source.get_style()
+    assert clone_style is not source.get_style()
+    clone_style.x = 30
+    assert source.get_style().x == 10
