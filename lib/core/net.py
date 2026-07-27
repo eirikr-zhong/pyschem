@@ -54,6 +54,9 @@ _net_label_counter = itertools.count(1)
 # Counter for auto-generated GroundNet refs.
 _groundnet_counter = itertools.count(1)
 
+# Counter for auto-generated explicit no-connect marker refs.
+_nc_counter = itertools.count(1)
+
 
 @lru_cache(maxsize=1)
 def _default_groundnet_symbol_data() -> "SymbolData":
@@ -246,3 +249,38 @@ class GroundNet(NetLabel):
         super().__init__(name, direction=direction, ref=actual_ref)
         # Always attach ground symbol data (overrides NetLabel flag).
         self.attach_symbol(_default_groundnet_symbol_data())
+
+
+class NC(Part):
+    """Explicit no-connect marker for an intentionally floating pin.
+
+    ``NC`` is a schematic annotation rather than an electrical connection:
+    constructing it with a :class:`~lib.core.part.Pin` leaves that pin out of
+    the pin graph.  The SVG renderer draws an X directly over the pin's outer
+    endpoint, and ERC reports an error if the marked pin is later connected.
+
+    Example::
+
+        unused = NC(u1.pin("7"))
+        schematic.add_part(unused)
+    """
+
+    target_pin: Pin
+
+    def __init__(self, target_pin: Pin, *, ref: Optional[str] = None) -> None:
+        if not isinstance(target_pin, Pin):
+            raise TypeError(
+                f"NC() requires a Pin, got {type(target_pin).__name__}"
+            )
+        self.target_pin = target_pin
+        super().__init__(
+            lib_id="Annotation:NoConnect",
+            ref=ref or f"#NC{next(_nc_counter)}",
+        )
+        # NC is rendered at target_pin, so it has no independent ref/value text.
+        self.set_style(
+            Style(
+                ref_text=TextPlacementStyle(visible=False),
+                value_text=TextPlacementStyle(visible=False),
+            )
+        )

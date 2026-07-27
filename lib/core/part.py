@@ -230,14 +230,14 @@ def parse_pins(part: "Part", pin_spec: str) -> list[Pin]:
 if TYPE_CHECKING:
     # Backward-compatible typing re-export; runtime is resolved lazily to
     # avoid circular imports (lib.core.net imports Part/Pin from this module).
-    from lib.core.net import GroundNet, NetLabel
+    from lib.core.net import GroundNet, NC, NetLabel
 
 
 def __getattr__(name: str) -> object:
-    """Lazy compatibility re-export for NetLabel/GroundNet."""
-    if name in {"NetLabel", "GroundNet"}:
-        from lib.core.net import GroundNet, NetLabel
+    """Lazy compatibility re-export for special net annotations."""
+    if name in {"NetLabel", "GroundNet", "NC"}:
+        from lib.core.net import GroundNet, NC, NetLabel
 
-        exports = {"NetLabel": NetLabel, "GroundNet": GroundNet}
+        exports = {"NetLabel": NetLabel, "GroundNet": GroundNet, "NC": NC}
         return exports[name]
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
