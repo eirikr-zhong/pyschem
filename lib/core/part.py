@@ -103,12 +103,14 @@ class Part:
         ref: Reference designator (e.g., "R1"). If None, auto-generated.
         value: Component value (e.g., "10k")
         footprint: Optional PCB metadata string (not used by rendering)
+        bom_fields: Optional procurement metadata (for example, manufacturer or MPN)
     """
 
     lib_id: str
     ref: Optional[str] = None
     value: Optional[str] = None
     footprint: Optional[str] = None
+    bom_fields: dict[str, str] = field(default_factory=dict)
     _style: Optional[Style] = field(default=None, repr=False)
     _pins: dict[str, Pin] = field(default_factory=dict, repr=False)
     _symbol_data: Optional["SymbolData"] = field(default=None, repr=False)
