@@ -143,13 +143,14 @@ def test_place_all_params_stored_correctly() -> None:
     part = Part(lib_id="Device:R", ref="R1")
     sch.add_part(part)
     
-    sch.place(part, x=5.0, y=15.0, anchor="left", rotation=90, locked=True)
+    sch.place(part, x=5.0, y=15.0, anchor="left", rotation=90, scale=1.5, locked=True)
     
     style = part.get_style()
     assert style.x == 5.0
     assert style.y == 15.0
     assert style.anchor == "left"
     assert style.rotation == 90
+    assert style.scale == 1.5
     assert style.locked is True
 
 

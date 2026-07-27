@@ -98,6 +98,21 @@ class TestRenderPartRotation:
         svg = c.to_svg()
         assert "rotate" not in svg
 
+    def test_scale_transforms_symbol_and_tracks_scaled_bbox(self):
+        rend = SymbolRenderer()
+        c = _canvas()
+        sym = _simple_symbol(
+            primitives=[SymbolPrimitive("line", [(-10, 0), (10, 0)])],
+        )
+        part = _make_part_with_symbol(sym)
+
+        rend.render_part(c, part, 100, 100, symbol_name="TestSym", scale=2.0)
+
+        svg = c.to_svg()
+        assert "scale(2)" in svg
+        assert c._min_x <= 80
+        assert c._max_x >= 120
+
     def test_render_part_with_value_label(self):
         """Part with a value emits value text (L111)."""
         rend = SymbolRenderer()
@@ -241,6 +256,20 @@ class TestPinEndpoints:
             key = list(eps0.keys())[0]
             assert eps0[key] != eps90.get(key, eps0[key]) or True  # at minimum no crash
 
+    def test_pin_endpoints_apply_component_scale_before_rotation(self):
+        rend = SymbolRenderer()
+        sym = _simple_symbol(
+            pins=[PinDefinition("1", "~", "passive", 10, 0, 0, 5)],
+        )
+        part = _make_part_with_symbol(sym)
+        part.pin("1")
+
+        endpoints = rend.pin_endpoints(
+            part, 100, 200, symbol_name="TestSym", rotation=90, scale=0.5
+        )
+
+        assert endpoints[("U1", "1")] == pytest.approx((100, 195))
+
 
 # ---------------------------------------------------------------------------
 # component_bbox() — raw bbox is None  (L173)
@@ -265,6 +294,17 @@ class TestComponentBbox:
         result = rend.component_bbox(part, 100, 200, symbol_name="TestSym")
         assert result is not None
         assert len(result) == 4
+
+    def test_bbox_applies_component_scale(self):
+        rend = SymbolRenderer()
+        sym = _simple_symbol(
+            primitives=[SymbolPrimitive("line", [(-10, -5), (10, 5)])],
+        )
+        part = _make_part_with_symbol(sym)
+
+        result = rend.component_bbox(part, 100, 200, symbol_name="TestSym", scale=0.5)
+
+        assert result == pytest.approx((95, 197.5, 105, 202.5))
 
 
 # ---------------------------------------------------------------------------

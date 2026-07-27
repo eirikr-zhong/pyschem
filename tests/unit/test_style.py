@@ -31,6 +31,7 @@ def test_style_valid_defaults():
     assert s.y is None
     assert s.anchor == "center"
     assert s.rotation == 0
+    assert s.scale == 1.0
     assert s.locked is False
     assert s.z_index == 0
 
@@ -110,6 +111,21 @@ def test_rotation_all_valid_values(deg):
     """rotation ∈ {0, 90, 180, 270} must all pass validation."""
     s = Style(rotation=deg)
     assert s.rotation == deg
+
+
+@pytest.mark.unit
+@pytest.mark.P1
+@pytest.mark.parametrize("scale", [0.25, 1.0, 2.0])
+def test_scale_accepts_positive_finite_numbers(scale):
+    assert Style(scale=scale).scale == scale
+
+
+@pytest.mark.unit
+@pytest.mark.P1
+@pytest.mark.parametrize("scale", [0, -1, float("inf"), float("nan"), True, "2"])
+def test_scale_rejects_non_positive_or_invalid_values(scale):
+    with pytest.raises(StyleValidationError, match="scale"):
+        Style(scale=scale)  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------
